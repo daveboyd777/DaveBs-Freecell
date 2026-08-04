@@ -1,0 +1,26 @@
+# CodeRabbit — AI code reviewer (free for open-source repositories).
+# Reviews every pull request: summaries, line-level comments, and
+# suggested fixes. Install the GitHub App at https://github.com/apps/coderabbitai
+# and it picks up this configuration automatically.
+language: en-US
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  auto_review:
+    enabled: true
+    drafts: false
+  path_instructions:
+    - path: "src/lib.rs"
+      instructions: >-
+        This is the game engine. Any behavior change must come with a
+        corresponding test in tests/game_tests.rs (the project is strictly
+        test-first). Flag PRs that change engine logic without tests.
+    - path: "tests/**"
+      instructions: >-
+        Tests are the specification. Watch for weakened assertions or
+        deleted tests.
+chat:
+  auto_reply: true

@@ -116,7 +116,9 @@ modules tracking the classic FreeCell stats.
   push and pull request.
 - **Dependabot** watches Cargo dependencies and the CI workflow itself,
   opening automatic update pull requests weekly.
+- **CodeRabbit** (AI code review, free for open-source) reviews every pull
+  request — configuration in [`.coderabbit.yaml`](.coderabbit.yaml).
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE) — © 2026 Dave Boyd, Softflo Technology

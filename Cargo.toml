@@ -2,5 +2,11 @@
 name = "freecell"
 version = "0.1.0"
 edition = "2021"
+authors = ["Dave Boyd <daveboyd777@gmail.com>"]
+description = "DaveB's Freecell - a FreeCell card game with classic Microsoft deal numbering, built test-first"
+repository = "https://github.com/daveboyd777/DaveBs-Freecell"
+license = "MIT"
+keywords = ["freecell", "solitaire", "card-game", "game", "cli"]
+categories = ["games", "command-line-utilities"]
 
 [dependencies]
