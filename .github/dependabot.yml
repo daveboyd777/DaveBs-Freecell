@@ -1,0 +1,20 @@
+# Dependabot: GitHub's built-in, free maintenance bot.
+# Opens weekly pull requests to update Cargo dependencies and the
+# GitHub Actions used by CI. CI must pass before they can be merged.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+      - ci

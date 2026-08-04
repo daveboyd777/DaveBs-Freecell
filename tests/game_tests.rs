@@ -47,7 +47,11 @@ fn deal_produces_52_unique_cards_in_standard_layout() {
     let mut seen = std::collections::HashSet::new();
     for col in game.cascades() {
         for card in col {
-            assert!((1..=13).contains(&card.rank), "rank out of range: {}", card.rank);
+            assert!(
+                (1..=13).contains(&card.rank),
+                "rank out of range: {}",
+                card.rank
+            );
             assert!(seen.insert(*card), "duplicate card dealt: {card:?}");
         }
     }
@@ -95,11 +99,22 @@ fn same_seed_deals_same_game() {
 #[test]
 fn top_card_can_move_to_an_empty_free_cell() {
     let mut game = Game::from_parts(
-        [cascade(&["KC", "7H"]), vec![], vec![], vec![], vec![], vec![], vec![], vec![]],
+        [
+            cascade(&["KC", "7H"]),
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+        ],
         [None, None, None, None],
         [0, 0, 0, 0],
     );
-    let moved = game.do_move(Loc::Cascade(0), Loc::Free(1)).expect("move should succeed");
+    let moved = game
+        .do_move(Loc::Cascade(0), Loc::Free(1))
+        .expect("move should succeed");
     assert_eq!(moved, 1);
     assert_eq!(game.freecells()[1], Some(c("7H")));
     assert_eq!(game.cascades()[0], cascade(&["KC"]));
@@ -108,7 +123,16 @@ fn top_card_can_move_to_an_empty_free_cell() {
 #[test]
 fn a_card_cannot_move_to_an_occupied_free_cell() {
     let mut game = Game::from_parts(
-        [cascade(&["KC", "7H"]), vec![], vec![], vec![], vec![], vec![], vec![], vec![]],
+        [
+            cascade(&["KC", "7H"]),
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+        ],
         [Some(c("2C")), None, None, None],
         [0, 0, 0, 0],
     );
@@ -121,11 +145,21 @@ fn a_card_cannot_move_to_an_occupied_free_cell() {
 #[test]
 fn a_free_cell_card_can_return_to_a_valid_cascade() {
     let mut game = Game::from_parts(
-        [cascade(&["8S"]), vec![], vec![], vec![], vec![], vec![], vec![], vec![]],
+        [
+            cascade(&["8S"]),
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+        ],
         [Some(c("7H")), None, None, None],
         [0, 0, 0, 0],
     );
-    game.do_move(Loc::Free(0), Loc::Cascade(0)).expect("7H onto 8S is legal");
+    game.do_move(Loc::Free(0), Loc::Cascade(0))
+        .expect("7H onto 8S is legal");
     assert_eq!(game.cascades()[0], cascade(&["8S", "7H"]));
     assert_eq!(game.freecells()[0], None);
 }
@@ -135,22 +169,45 @@ fn a_free_cell_card_can_return_to_a_valid_cascade() {
 #[test]
 fn only_an_ace_starts_a_foundation() {
     let mut game = Game::from_parts(
-        [cascade(&["AH"]), cascade(&["2H"]), vec![], vec![], vec![], vec![], vec![], vec![]],
+        [
+            cascade(&["AH"]),
+            cascade(&["2H"]),
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+        ],
         [None, None, None, None],
         [0, 0, 0, 0],
     );
-    assert!(game.do_move(Loc::Cascade(1), Loc::Foundation).is_err(), "2H before AH must fail");
-    game.do_move(Loc::Cascade(0), Loc::Foundation).expect("AH starts the hearts foundation");
+    assert!(
+        game.do_move(Loc::Cascade(1), Loc::Foundation).is_err(),
+        "2H before AH must fail"
+    );
+    game.do_move(Loc::Cascade(0), Loc::Foundation)
+        .expect("AH starts the hearts foundation");
     assert_eq!(game.foundations()[Suit::Hearts as usize], 1);
     // Now the 2H goes up.
-    game.do_move(Loc::Cascade(1), Loc::Foundation).expect("2H follows AH");
+    game.do_move(Loc::Cascade(1), Loc::Foundation)
+        .expect("2H follows AH");
     assert_eq!(game.foundations()[Suit::Hearts as usize], 2);
 }
 
 #[test]
 fn foundations_are_per_suit() {
     let mut game = Game::from_parts(
-        [cascade(&["2S"]), vec![], vec![], vec![], vec![], vec![], vec![], vec![]],
+        [
+            cascade(&["2S"]),
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+        ],
         [None, None, None, None],
         [0, 0, 1, 0], // hearts foundation holds the ace
     );
@@ -166,30 +223,49 @@ fn foundations_are_per_suit() {
 fn cascade_stacking_requires_descending_rank_and_alternating_color() {
     let mut game = Game::from_parts(
         [
-            cascade(&["8S"]),  // black 8
-            cascade(&["7H"]),  // red 7  -> legal on 8S
-            cascade(&["7D"]),  // red 7  -> legal on 8S
-            cascade(&["7S"]),  // black 7 -> illegal on 8S (same color)
-            cascade(&["6H"]),  // red 6  -> illegal on 8S (wrong rank)
-            vec![], vec![], vec![],
+            cascade(&["8S"]), // black 8
+            cascade(&["7H"]), // red 7  -> legal on 8S
+            cascade(&["7D"]), // red 7  -> legal on 8S
+            cascade(&["7S"]), // black 7 -> illegal on 8S (same color)
+            cascade(&["6H"]), // red 6  -> illegal on 8S (wrong rank)
+            vec![],
+            vec![],
+            vec![],
         ],
         [None, None, None, None],
         [0, 0, 0, 0],
     );
-    assert!(game.do_move(Loc::Cascade(3), Loc::Cascade(0)).is_err(), "same color must fail");
-    assert!(game.do_move(Loc::Cascade(4), Loc::Cascade(0)).is_err(), "rank gap must fail");
-    game.do_move(Loc::Cascade(1), Loc::Cascade(0)).expect("red 7 on black 8");
+    assert!(
+        game.do_move(Loc::Cascade(3), Loc::Cascade(0)).is_err(),
+        "same color must fail"
+    );
+    assert!(
+        game.do_move(Loc::Cascade(4), Loc::Cascade(0)).is_err(),
+        "rank gap must fail"
+    );
+    game.do_move(Loc::Cascade(1), Loc::Cascade(0))
+        .expect("red 7 on black 8");
     assert_eq!(game.cascades()[0], cascade(&["8S", "7H"]));
 }
 
 #[test]
 fn any_card_can_move_to_an_empty_cascade() {
     let mut game = Game::from_parts(
-        [cascade(&["4D", "9C"]), vec![], vec![], vec![], vec![], vec![], vec![], vec![]],
+        [
+            cascade(&["4D", "9C"]),
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+        ],
         [None, None, None, None],
         [0, 0, 0, 0],
     );
-    game.do_move(Loc::Cascade(0), Loc::Cascade(5)).expect("9C to empty cascade");
+    game.do_move(Loc::Cascade(0), Loc::Cascade(5))
+        .expect("9C to empty cascade");
     assert_eq!(game.cascades()[5], cascade(&["9C"]));
 }
 
@@ -203,12 +279,19 @@ fn an_ordered_run_moves_as_a_unit_when_capacity_allows() {
         [
             cascade(&["KC", "9H", "8S", "7D"]),
             cascade(&["TS"]),
-            vec![], vec![], vec![], vec![], vec![], vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
         ],
         [None, None, None, None],
         [0, 0, 0, 0],
     );
-    let moved = game.do_move(Loc::Cascade(0), Loc::Cascade(1)).expect("run onto TS");
+    let moved = game
+        .do_move(Loc::Cascade(0), Loc::Cascade(1))
+        .expect("run onto TS");
     assert_eq!(moved, 3);
     assert_eq!(game.cascades()[1], cascade(&["TS", "9H", "8S", "7D"]));
     assert_eq!(game.cascades()[0], cascade(&["KC"]));
@@ -222,8 +305,12 @@ fn supermove_fails_when_free_cells_cannot_cover_it() {
         [
             cascade(&["KC", "9H", "8S", "7D"]),
             cascade(&["TS"]),
-            cascade(&["2C"]), cascade(&["2D"]), cascade(&["2H"]),
-            cascade(&["2S"]), cascade(&["3C"]), cascade(&["3D"]),
+            cascade(&["2C"]),
+            cascade(&["2D"]),
+            cascade(&["2H"]),
+            cascade(&["2S"]),
+            cascade(&["3C"]),
+            cascade(&["3D"]),
         ],
         [Some(c("KD")), Some(c("KH")), Some(c("KS")), Some(c("QC"))],
         [0, 0, 0, 0],
@@ -240,13 +327,18 @@ fn empty_cascades_double_supermove_capacity() {
             cascade(&["KC", "9H", "8S", "7D"]),
             cascade(&["TS"]),
             vec![], // empty cascade used as a waystation
-            cascade(&["2D"]), cascade(&["2H"]),
-            cascade(&["2S"]), cascade(&["3C"]), cascade(&["3D"]),
+            cascade(&["2D"]),
+            cascade(&["2H"]),
+            cascade(&["2S"]),
+            cascade(&["3C"]),
+            cascade(&["3D"]),
         ],
         [Some(c("KD")), Some(c("KH")), Some(c("KS")), None],
         [0, 0, 0, 0],
     );
-    let moved = game.do_move(Loc::Cascade(0), Loc::Cascade(1)).expect("supermove via empty column");
+    let moved = game
+        .do_move(Loc::Cascade(0), Loc::Cascade(1))
+        .expect("supermove via empty column");
     assert_eq!(moved, 3);
     assert_eq!(game.cascades()[1], cascade(&["TS", "9H", "8S", "7D"]));
 }
@@ -256,14 +348,32 @@ fn empty_cascades_double_supermove_capacity() {
 #[test]
 fn game_is_won_when_all_foundations_reach_king() {
     let won = Game::from_parts(
-        [vec![], vec![], vec![], vec![], vec![], vec![], vec![], vec![]],
+        [
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+        ],
         [None, None, None, None],
         [13, 13, 13, 13],
     );
     assert!(won.is_won());
 
     let not_won = Game::from_parts(
-        [cascade(&["KH"]), vec![], vec![], vec![], vec![], vec![], vec![], vec![]],
+        [
+            cascade(&["KH"]),
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+        ],
         [None, None, None, None],
         [13, 13, 12, 13],
     );
@@ -273,7 +383,16 @@ fn game_is_won_when_all_foundations_reach_king() {
 #[test]
 fn undo_restores_the_previous_position() {
     let mut game = Game::from_parts(
-        [cascade(&["KC", "7H"]), vec![], vec![], vec![], vec![], vec![], vec![], vec![]],
+        [
+            cascade(&["KC", "7H"]),
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+        ],
         [None, None, None, None],
         [0, 0, 0, 0],
     );
@@ -288,7 +407,16 @@ fn undo_restores_the_previous_position() {
 #[test]
 fn rejected_moves_are_not_undoable() {
     let mut game = Game::from_parts(
-        [cascade(&["KC"]), vec![], vec![], vec![], vec![], vec![], vec![], vec![]],
+        [
+            cascade(&["KC"]),
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+        ],
         [Some(c("2C")), None, None, None],
         [0, 0, 0, 0],
     );

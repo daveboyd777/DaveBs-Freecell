@@ -50,9 +50,16 @@ impl Card {
 
 impl fmt::Display for Card {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        const RANKS: [char; 13] = ['A', '2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K'];
+        const RANKS: [char; 13] = [
+            'A', '2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K',
+        ];
         const SUITS: [char; 4] = ['C', 'D', 'H', 'S'];
-        write!(f, "{}{}", RANKS[(self.rank - 1) as usize], SUITS[self.suit as usize])
+        write!(
+            f,
+            "{}{}",
+            RANKS[(self.rank - 1) as usize],
+            SUITS[self.suit as usize]
+        )
     }
 }
 
@@ -137,7 +144,12 @@ impl Game {
         freecells: [Option<Card>; 4],
         foundations: [u8; 4],
     ) -> Game {
-        Game { cascades, freecells, foundations, history: Vec::new() }
+        Game {
+            cascades,
+            freecells,
+            foundations,
+            history: Vec::new(),
+        }
     }
 
     pub fn cascades(&self) -> &[Vec<Card>; 8] {
@@ -207,7 +219,8 @@ impl Game {
                     return Err(MoveError::NotOneHigherSameSuit);
                 }
                 *pile += 1;
-                self.take_single(from).expect("peeked card must be takeable");
+                self.take_single(from)
+                    .expect("peeked card must be takeable");
                 Ok(1)
             }
             Loc::Cascade(dst) => {
@@ -218,7 +231,9 @@ impl Game {
                     Loc::Free(_) => {
                         let card = self.peek_single(from)?;
                         self.check_cascade_target(dst, &card)?;
-                        let card = self.take_single(from).expect("peeked card must be takeable");
+                        let card = self
+                            .take_single(from)
+                            .expect("peeked card must be takeable");
                         self.cascades[dst].push(card);
                         Ok(1)
                     }
@@ -298,7 +313,10 @@ impl Game {
 
     fn peek_single(&self, from: Loc) -> Result<Card, MoveError> {
         match from {
-            Loc::Cascade(i) if i < 8 => self.cascades[i].last().copied().ok_or(MoveError::EmptySource),
+            Loc::Cascade(i) if i < 8 => self.cascades[i]
+                .last()
+                .copied()
+                .ok_or(MoveError::EmptySource),
             Loc::Free(i) if i < 4 => self.freecells[i].ok_or(MoveError::EmptySource),
             _ => Err(MoveError::InvalidLocation),
         }

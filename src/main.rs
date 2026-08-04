@@ -137,7 +137,9 @@ fn render(game: &Game, seed: u32) {
         .map(|c| c.map_or("__".to_string(), |c| c.to_string()))
         .collect();
     const SUIT_CHARS: [char; 4] = ['C', 'D', 'H', 'S'];
-    const RANK_CHARS: [char; 14] = ['-', 'A', '2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K'];
+    const RANK_CHARS: [char; 14] = [
+        '-', 'A', '2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K',
+    ];
     let home: Vec<String> = game
         .foundations()
         .iter()
@@ -145,7 +147,14 @@ fn render(game: &Game, seed: u32) {
         .map(|(i, &r)| format!("{}{}", SUIT_CHARS[i], RANK_CHARS[r as usize]))
         .collect();
 
-    println!("free  a:{} b:{} c:{} d:{}    home  {}", free[0], free[1], free[2], free[3], home.join(" "));
+    println!(
+        "free  a:{} b:{} c:{} d:{}    home  {}",
+        free[0],
+        free[1],
+        free[2],
+        free[3],
+        home.join(" ")
+    );
     println!();
     println!("   1   2   3   4   5   6   7   8");
 
