@@ -42,7 +42,7 @@ fn main() {
                 continue;
             }
             "a" | "auto" => {
-                let n = auto_to_foundations(&mut game);
+                let n = game.auto_play();
                 println!("Sent {n} card(s) home.");
                 continue;
             }
@@ -101,29 +101,6 @@ fn parse_loc(c: char) -> Option<Loc> {
         'a'..='d' => Some(Loc::Free(c as usize - 'a' as usize)),
         'h' | 'f' => Some(Loc::Foundation),
         _ => None,
-    }
-}
-
-/// Repeatedly send every playable card to the foundations.
-fn auto_to_foundations(game: &mut Game) -> usize {
-    let mut sent = 0;
-    loop {
-        let mut progressed = false;
-        for i in 0..8 {
-            if game.do_move(Loc::Cascade(i), Loc::Foundation).is_ok() {
-                progressed = true;
-                sent += 1;
-            }
-        }
-        for i in 0..4 {
-            if game.do_move(Loc::Free(i), Loc::Foundation).is_ok() {
-                progressed = true;
-                sent += 1;
-            }
-        }
-        if !progressed {
-            return sent;
-        }
     }
 }
 

@@ -105,6 +105,8 @@ pub struct Game {
     /// Top rank per suit, indexed by `Suit as usize`; 0 means empty.
     foundations: [u8; 4],
     history: Vec<Snapshot>,
+    /// The deal number, when this game came from `Game::deal`.
+    seed: Option<u32>,
 }
 
 impl Game {
@@ -134,6 +136,7 @@ impl Game {
             freecells: [None; 4],
             foundations: [0; 4],
             history: Vec::new(),
+            seed: Some(seed),
         }
     }
 
@@ -149,7 +152,13 @@ impl Game {
             freecells,
             foundations,
             history: Vec::new(),
+            seed: None,
         }
+    }
+
+    /// The deal number this game was dealt from, when known.
+    pub fn seed(&self) -> Option<u32> {
+        self.seed
     }
 
     pub fn cascades(&self) -> &[Vec<Card>; 8] {
@@ -184,6 +193,30 @@ impl Game {
     /// How many moves have been played (and can be undone).
     pub fn moves_played(&self) -> usize {
         self.history.len()
+    }
+
+    /// Repeatedly send every playable card to the foundations.
+    /// Returns the number of cards sent home.
+    pub fn auto_play(&mut self) -> usize {
+        let mut sent = 0;
+        loop {
+            let mut progressed = false;
+            for i in 0..8 {
+                if self.do_move(Loc::Cascade(i), Loc::Foundation).is_ok() {
+                    progressed = true;
+                    sent += 1;
+                }
+            }
+            for i in 0..4 {
+                if self.do_move(Loc::Free(i), Loc::Foundation).is_ok() {
+                    progressed = true;
+                    sent += 1;
+                }
+            }
+            if !progressed {
+                return sent;
+            }
+        }
     }
 
     /// Perform a move, returning the number of cards moved.
@@ -328,5 +361,84 @@ impl Game {
             Loc::Free(i) if i < 4 => self.freecells[i].take().ok_or(MoveError::EmptySource),
             _ => Err(MoveError::InvalidLocation),
         }
+    }
+}
+
+/// Every way the game state can change, expressed as plain data.
+///
+/// A finished game is fully described by its deal seed plus the sequence of
+/// actions applied to it, which makes games serializable, replayable, and
+/// (with the Phase 1 Store) time-travel debuggable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Action {
+    /// Start a numbered deal.
+    Deal { seed: u32 },
+    /// Move a card or run between locations.
+    Move { from: Loc, to: Loc },
+    /// Send every playable card to the foundations.
+    AutoPlay,
+    /// Step back one move.
+    Undo,
+    /// Re-deal the current numbered game from scratch.
+    Restart,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ActionError {
+    /// The underlying move was illegal.
+    Move(MoveError),
+    /// Undo was dispatched with no moves to undo.
+    NothingToUndo,
+    /// Restart was dispatched on a position with no deal number
+    /// (e.g. one built with `Game::from_parts`).
+    UnknownDeal,
+}
+
+impl fmt::Display for ActionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ActionError::Move(e) => e.fmt(f),
+            ActionError::NothingToUndo => f.write_str("nothing to undo"),
+            ActionError::UnknownDeal => f.write_str("this position has no deal number to restart"),
+        }
+    }
+}
+
+impl From<MoveError> for ActionError {
+    fn from(e: MoveError) -> ActionError {
+        ActionError::Move(e)
+    }
+}
+
+/// Pure reducer: compute the next state from the current state and an action.
+///
+/// Never mutates its input, never performs I/O. `AutoPlay` always succeeds
+/// (sending zero cards home is not an error); every other action reports
+/// failures without changing anything.
+pub fn reduce(game: &Game, action: Action) -> Result<Game, ActionError> {
+    match action {
+        Action::Deal { seed } => Ok(Game::deal(seed)),
+        Action::Move { from, to } => {
+            let mut next = game.clone();
+            next.do_move(from, to)?;
+            Ok(next)
+        }
+        Action::AutoPlay => {
+            let mut next = game.clone();
+            next.auto_play();
+            Ok(next)
+        }
+        Action::Undo => {
+            let mut next = game.clone();
+            if next.undo() {
+                Ok(next)
+            } else {
+                Err(ActionError::NothingToUndo)
+            }
+        }
+        Action::Restart => match game.seed() {
+            Some(seed) => Ok(Game::deal(seed)),
+            None => Err(ActionError::UnknownDeal),
+        },
     }
 }
