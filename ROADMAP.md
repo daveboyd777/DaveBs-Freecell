@@ -104,6 +104,30 @@ self-analysis, persisted as JSON in the platform data directory.
 - `freecell stats` subcommand and, in Phase 2's UIs, a charts screen
   (win-rate trend, move-count distribution) rendered with plotters
 
+**Two-track visualization — the deliberate Rust ⇄ JavaScript fork:**
+
+The statistics module is a *data layer*, not a renderer. It exposes its
+results through a stable, versioned JSON schema (`freecell stats --json`),
+and two independent presentation tracks consume that schema:
+
+| Track | Stack | What it's for |
+|-------|-------|---------------|
+| **A — In-app (pure Rust)** | plotters inside egui | Charts embedded in the desktop/WASM game itself. One language, ships with the app. |
+| **B — Web dashboard (JavaScript)** | D3.js / Observable Plot on GitHub Pages | Interactive analytics over game history: hover a win-rate point to see the deal, click through to a replay (possible because a game is fully described by `(seed, action log)`). Maximum expressiveness, browser-native. |
+
+Separation-of-concerns rules that keep the fork safe:
+
+1. **All computation stays in Rust.** Game logic, streaks, win rates, and
+   solver results are computed once, in the tested `stats` module.
+   JavaScript renders; it never calculates.
+2. **The JSON schema is the contract.** It carries a version field, is
+   specified by Rust tests (schema snapshot tests), and a change to it is
+   a breaking change reviewed like engine code.
+3. **Renderers are disposable; the data layer is not.** Either track can
+   be rewritten or dropped without touching Rust internals — and future
+   renderers (a different JS library, a native mobile view) just consume
+   the same JSON.
+
 **Steps:**
 
 1. Test-first `stats` module: streak logic, win-rate math, serialization
@@ -111,6 +135,10 @@ self-analysis, persisted as JSON in the platform data directory.
 3. Solver crate module with its own test suite (known-solvable /
    known-unsolvable deals, e.g. #11982)
 4. Hint and post-game-analysis commands wired into both UIs
+5. Versioned JSON export (`freecell stats --json`) with schema tests —
+   the hinge point the JavaScript track hangs on
+6. D3.js / Observable Plot dashboard on GitHub Pages consuming the JSON,
+   including deal-level drill-down and replay links
 
 ## Phase 4 — Release and maintenance automation
 
