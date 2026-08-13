@@ -194,13 +194,21 @@ fn recorder_subscriber_pattern_records_every_successful_action() {
     store.subscribe(move |_state, action| log_clone.borrow_mut().push(*action));
 
     store.dispatch(Action::AutoPlay).unwrap();
-    let _ = store.dispatch(Action::Move {
+    let move_action = Action::Move {
         from: Loc::Cascade(0),
         to: Loc::Free(0),
-    }); // may succeed or fail depending on the deal; either is fine here
+    };
+    let move_result = store.dispatch(move_action); // may succeed or fail depending on the deal
 
-    // Only successful dispatches are recorded.
+    // Assert the exact log: the successful AutoPlay must always be recorded,
+    // and the Move must be recorded if and only if it succeeded -- this
+    // catches both a missed successful-notification and an incorrectly
+    // recorded rejected move (weaker `contains`/`len()` checks would miss both).
     let recorded = log.borrow();
-    assert!(recorded.contains(&Action::AutoPlay));
-    assert!(recorded.len() <= 2);
+    let expected = if move_result.is_ok() {
+        vec![Action::AutoPlay, move_action]
+    } else {
+        vec![Action::AutoPlay]
+    };
+    assert_eq!(*recorded, expected);
 }
