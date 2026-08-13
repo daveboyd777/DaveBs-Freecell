@@ -423,3 +423,77 @@ fn rejected_moves_are_not_undoable() {
     assert!(game.do_move(Loc::Cascade(0), Loc::Free(0)).is_err());
     assert!(!game.undo(), "a failed move must not create an undo entry");
 }
+
+// ---------------------------------------------------------------- redo
+
+#[test]
+fn redo_replays_a_move_that_was_undone() {
+    let mut game = Game::from_parts(
+        [
+            cascade(&["KC", "7H"]),
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+        ],
+        [None, None, None, None],
+        [0, 0, 0, 0],
+    );
+    game.do_move(Loc::Cascade(0), Loc::Free(0)).unwrap();
+    let after_move = game.cascades().clone();
+    game.undo();
+
+    assert!(game.redo(), "redo after an undo should succeed");
+    assert_eq!(game.cascades(), &after_move);
+    assert_eq!(game.freecells()[0], Some(c("7H")));
+    assert_eq!(game.moves_played(), 1);
+}
+
+#[test]
+fn redo_with_nothing_undone_is_a_no_op() {
+    let mut game = Game::deal(617);
+    assert!(!game.redo(), "nothing to redo without an undo first");
+}
+
+#[test]
+fn a_new_move_after_undo_clears_the_redo_stack() {
+    let mut game = Game::from_parts(
+        [
+            cascade(&["KC", "7H"]),
+            cascade(&["8S"]),
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+        ],
+        [None, None, None, None],
+        [0, 0, 0, 0],
+    );
+    game.do_move(Loc::Cascade(0), Loc::Free(0)).unwrap();
+    game.undo();
+    // A different move now, instead of redoing the free-cell move.
+    game.do_move(Loc::Cascade(1), Loc::Free(1)).unwrap();
+
+    assert!(
+        !game.redo(),
+        "a fresh move after undo must invalidate the old redo target"
+    );
+}
+
+#[test]
+fn undo_then_redo_round_trips_to_the_exact_same_state() {
+    let mut game = Game::deal(11982);
+    let before = game.cascades().clone();
+    game.do_move(Loc::Cascade(0), Loc::Free(0)).unwrap();
+    game.undo();
+    assert_eq!(game.cascades(), &before);
+    game.redo();
+    // And undo remains available after a redo.
+    assert!(game.undo(), "undo should work again after a redo");
+    assert_eq!(game.cascades(), &before);
+}

@@ -4,17 +4,18 @@
 //!
 //! `Store::dispatch` applies actions via [`reduce_in_place`] rather than the
 //! pure, by-reference [`reduce`]: `reduce` clones the entire input `Game`
-//! (including its whole `history`) per call, which made dispatch cost grow
-//! with moves already played (issue #24). `reduce_in_place` mutates the
-//! store's `Game` directly through its own already-efficient methods
-//! instead. `Game`'s own `history` still serves as the "past" stack the
-//! design sketch in `ROADMAP.md` describes as a separate `Store` field, so
-//! there is no second undo mechanism to keep in sync.
+//! (including its whole `past`/`future` stacks) per call, which made
+//! dispatch cost grow with moves already played (issue #24).
+//! `reduce_in_place` mutates the store's `Game` directly through its own
+//! already-efficient methods instead.
 //!
-//! Deliberately deferred to issue #4 ("Add redo (time-travel) support"):
-//! a `future`/redo stack. Adding one here unused would either trip
-//! `cargo clippy -D warnings` (dead code) or half-ship #4's public API
-//! inside this PR.
+//! Undo *and* redo (issue #4) both come for free: `Game`'s own `past`/
+//! `future` stacks already serve as the history the design sketch in
+//! `ROADMAP.md` describes as separate `Store` fields, and `Store::dispatch`
+//! forwards any [`Action`] — including `Action::Redo` — generically, with
+//! no Store-specific redo code needed. This deliberately avoids a second,
+//! Store-level undo/redo mechanism that could drift out of sync with
+//! `Game`'s own.
 
 use crate::{reduce_in_place, Action, ActionError, Game, GameState};
 
@@ -43,7 +44,7 @@ impl Store {
         }
     }
 
-    /// The full underlying [`Game`] (state, history, and seed).
+    /// The full underlying [`Game`] (state, past/future stacks, and seed).
     pub fn game(&self) -> &Game {
         &self.game
     }
@@ -55,10 +56,10 @@ impl Store {
     }
 
     /// Apply an action via [`reduce_in_place`], which mutates the store's
-    /// `Game` directly without cloning its history (issue #24). On success,
-    /// notifies every subscriber, in registration order, with the new state
-    /// and the action that produced it. On failure, the store is left
-    /// untouched and no subscriber is notified.
+    /// `Game` directly without cloning its past/future stacks (issue #24).
+    /// On success, notifies every subscriber, in registration order, with
+    /// the new state and the action that produced it. On failure, the store
+    /// is left untouched and no subscriber is notified.
     pub fn dispatch(&mut self, action: Action) -> Result<(), ActionError> {
         reduce_in_place(&mut self.game, action)?;
         for subscriber in &self.subscribers {

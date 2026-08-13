@@ -318,7 +318,14 @@ impl GameState {
 #[derive(Debug, Clone)]
 pub struct Game {
     state: GameState,
-    history: Vec<GameState>,
+    /// States reachable by [`Game::undo`], newest last.
+    past: Vec<GameState>,
+    /// States reachable by [`Game::redo`], newest last. Populated only by
+    /// `undo`; cleared by any other state-changing action ([`Game::do_move`],
+    /// and therefore [`Game::auto_play`], which calls it in a loop) so a
+    /// fresh move after an undo does not leave a stale, misleading redo
+    /// target around — the generalization issue #4 asks for.
+    future: Vec<GameState>,
     /// The deal number, when this game came from `Game::deal`.
     seed: Option<u32>,
 }
@@ -328,7 +335,8 @@ impl Game {
     pub fn deal(seed: u32) -> Game {
         Game {
             state: GameState::deal(seed),
-            history: Vec::new(),
+            past: Vec::new(),
+            future: Vec::new(),
             seed: Some(seed),
         }
     }
@@ -342,7 +350,8 @@ impl Game {
     ) -> Game {
         Game {
             state: GameState::from_parts(cascades, freecells, foundations),
-            history: Vec::new(),
+            past: Vec::new(),
+            future: Vec::new(),
             seed: None,
         }
     }
@@ -375,10 +384,24 @@ impl Game {
     }
 
     /// Undo the last successful move. Returns false when there is nothing to undo.
+    /// On success, the undone state becomes available to [`Game::redo`].
     pub fn undo(&mut self) -> bool {
-        match self.history.pop() {
+        match self.past.pop() {
             Some(state) => {
-                self.state = state;
+                self.future.push(std::mem::replace(&mut self.state, state));
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Redo the last undone move. Returns false when there is nothing to
+    /// redo — either nothing has been undone yet, or a new action since the
+    /// last undo cleared the redo stack.
+    pub fn redo(&mut self) -> bool {
+        match self.future.pop() {
+            Some(state) => {
+                self.past.push(std::mem::replace(&mut self.state, state));
                 true
             }
             None => false,
@@ -387,7 +410,7 @@ impl Game {
 
     /// How many moves have been played (and can be undone).
     pub fn moves_played(&self) -> usize {
-        self.history.len()
+        self.past.len()
     }
 
     /// Repeatedly send every playable card to the foundations.
@@ -416,11 +439,13 @@ impl Game {
 
     /// Perform a move, returning the number of cards moved. See
     /// [`GameState::do_move`] for the move rules; this wrapper additionally
-    /// records an undo snapshot on success.
+    /// records an undo snapshot on success and clears the redo stack (a new
+    /// move invalidates whatever was previously undone).
     pub fn do_move(&mut self, from: Loc, to: Loc) -> Result<usize, MoveError> {
         let snapshot = self.state.clone();
         let moved = self.state.do_move(from, to)?;
-        self.history.push(snapshot);
+        self.past.push(snapshot);
+        self.future.clear();
         Ok(moved)
     }
 }
@@ -440,6 +465,9 @@ pub enum Action {
     AutoPlay,
     /// Step back one move.
     Undo,
+    /// Step forward one move previously undone. Any other state-changing
+    /// action clears what `Redo` would have replayed (issue #4).
+    Redo,
     /// Re-deal the current numbered game from scratch.
     Restart,
 }
@@ -450,6 +478,8 @@ pub enum ActionError {
     Move(MoveError),
     /// Undo was dispatched with no moves to undo.
     NothingToUndo,
+    /// Redo was dispatched with no undone move to replay.
+    NothingToRedo,
     /// Restart was dispatched on a position with no deal number
     /// (e.g. one built with `Game::from_parts`).
     UnknownDeal,
@@ -460,6 +490,7 @@ impl fmt::Display for ActionError {
         match self {
             ActionError::Move(e) => e.fmt(f),
             ActionError::NothingToUndo => f.write_str("nothing to undo"),
+            ActionError::NothingToRedo => f.write_str("nothing to redo"),
             ActionError::UnknownDeal => f.write_str("this position has no deal number to restart"),
         }
     }
@@ -480,10 +511,11 @@ impl From<MoveError> for ActionError {
 /// This is the immutable, by-reference API: callers keep a usable `game`
 /// after the call (relied on by [`tests/reducer_tests.rs`]'s purity checks)
 /// and get back an independent `Game`. Each call clones the *entire* input
-/// `Game`, including its `history`, so repeated dispatch through `reduce`
-/// costs grow with moves already played. [`Store`] uses [`reduce_in_place`]
-/// instead for that reason; prefer `reduce` for tests, replay/comparison,
-/// or any call site that genuinely wants an immutable transform.
+/// `Game`, including its `past`/`future` stacks, so repeated dispatch
+/// through `reduce` costs grow with moves already played. [`Store`] uses
+/// [`reduce_in_place`] instead for that reason; prefer `reduce` for tests,
+/// replay/comparison, or any call site that genuinely wants an immutable
+/// transform.
 pub fn reduce(game: &Game, action: Action) -> Result<Game, ActionError> {
     match action {
         Action::Deal { seed } => Ok(Game::deal(seed)),
@@ -505,6 +537,14 @@ pub fn reduce(game: &Game, action: Action) -> Result<Game, ActionError> {
                 Err(ActionError::NothingToUndo)
             }
         }
+        Action::Redo => {
+            let mut next = game.clone();
+            if next.redo() {
+                Ok(next)
+            } else {
+                Err(ActionError::NothingToRedo)
+            }
+        }
         Action::Restart => match game.seed() {
             Some(seed) => Ok(Game::deal(seed)),
             None => Err(ActionError::UnknownDeal),
@@ -513,10 +553,11 @@ pub fn reduce(game: &Game, action: Action) -> Result<Game, ActionError> {
 }
 
 /// Efficient sibling of [`reduce`]: applies `action` to `game` in place via
-/// `Game`'s own mutating methods (`do_move`, `undo`, `auto_play`), instead of
-/// cloning the whole `Game` (and its `history`) first. Same semantics as
-/// `reduce` for every action — same success/failure results, and atomic on
-/// failure: `game` is left exactly as it was when `Err` is returned.
+/// `Game`'s own mutating methods (`do_move`, `undo`, `redo`, `auto_play`),
+/// instead of cloning the whole `Game` (and its `past`/`future` stacks)
+/// first. Same semantics as `reduce` for every action — same success/failure
+/// results, and atomic on failure: `game` is left exactly as it was when
+/// `Err` is returned.
 ///
 /// Intended for [`Store::dispatch`], whose per-move cost must not scale with
 /// how many moves have already been played. `reduce` itself is unaffected
@@ -541,6 +582,13 @@ pub fn reduce_in_place(game: &mut Game, action: Action) -> Result<(), ActionErro
                 Ok(())
             } else {
                 Err(ActionError::NothingToUndo)
+            }
+        }
+        Action::Redo => {
+            if game.redo() {
+                Ok(())
+            } else {
+                Err(ActionError::NothingToRedo)
             }
         }
         Action::Restart => match game.seed() {

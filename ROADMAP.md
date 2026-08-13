@@ -54,19 +54,29 @@ struct Store {
 1. Write reducer tests mirroring the existing 16-test specification — done (#2)
 2. Extract `GameState` (cascades/freecells/foundations) from `Game` — done (#3)
 3. Implement `reduce` by delegating to the existing move logic — done (#2)
-4. Add `Store` with subscribe/dispatch and undo/redo stacks — done (#3), with two
-   deliberate deviations from the sketch above:
-   - **No `future`/redo stack yet.** Redo is tracked separately as issue #4
-     ("Add redo (time-travel) support"). Adding an unused `future` field now
-     would either trip `cargo clippy -D warnings` (dead code) or half-ship
-     #4's public API inside #3's PR.
-   - **`Store` wraps `Game` and calls the existing `reduce`**, rather than
+4. Add `Store` with subscribe/dispatch and undo/redo stacks — done (#3, #4, #24),
+   with three deliberate deviations from the sketch above:
+   - **`Store` wraps `Game` and calls `reduce`/`reduce_in_place`**, rather than
      reimplementing dispatch logic against a bare `GameState`. `Game`'s own
-     `history: Vec<GameState>` already *is* the "past" stack the sketch
-     describes as a separate `Store` field, so there is no second undo
-     mechanism to keep in sync. Subscribers fire only on a *successful*
-     dispatch (a rejected action produced no transition to observe), and
-     there is no unsubscribe API for v1.
+     `past`/`future: Vec<GameState>` (generalized from its original single
+     `history` stack in #4) already serve as the stacks the sketch describes
+     as separate `Store` fields, so there is no second, Store-level undo/redo
+     mechanism that could drift out of sync. `Store::dispatch` forwards any
+     `Action` — including the new `Action::Redo` — generically, so redo
+     required zero Store-specific code once `Game` grew a `future` stack.
+     Subscribers fire only on a *successful* dispatch (a rejected action
+     produced no transition to observe), and there is no unsubscribe API
+     for v1.
+   - **`Store::dispatch` uses `reduce_in_place`, not `reduce`.** `reduce`
+     clones the entire `Game` (including its `past`/`future`) per call, so
+     per-dispatch cost grew with moves already played (#24, fixed by adding
+     the efficient in-place sibling; `reduce` itself is unchanged and still
+     used by tests/replay call sites that want an immutable transform).
+   - **A dispatched non-undo/redo action clears `future`** via `Game::do_move`
+     (and therefore `Game::auto_play`, which calls it in a loop) rather than
+     in `Store` — this is the literal issue #4 requirement, implemented once
+     at the source of every position-changing action instead of duplicated
+     across call sites.
 5. Port the CLI to dispatch actions instead of calling methods — tracked as #5,
    not started; `main.rs` still calls `Game` methods directly
 
