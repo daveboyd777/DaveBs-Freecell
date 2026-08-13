@@ -5,6 +5,9 @@
 
 use std::fmt;
 
+pub mod store;
+pub use store::Store;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Suit {
     Clubs = 0,
@@ -96,22 +99,26 @@ impl fmt::Display for MoveError {
     }
 }
 
-type Snapshot = ([Vec<Card>; 8], [Option<Card>; 4], [u8; 4]);
-
-#[derive(Debug, Clone)]
-pub struct Game {
+/// A plain-data snapshot of a FreeCell position: the cascades, free cells,
+/// and foundations. `GameState` carries no history and no behavior beyond
+/// the rules needed to validate and apply a single move — it is the value
+/// type that [`Store`] hands to subscribers and that [`Game`] wraps with
+/// undo history and a deal seed.
+///
+/// Extracted from the original monolithic `Game` struct (issue #3) so the
+/// position itself is cheap to snapshot, compare, and observe independently
+/// of move-history bookkeeping.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GameState {
     cascades: [Vec<Card>; 8],
     freecells: [Option<Card>; 4],
     /// Top rank per suit, indexed by `Suit as usize`; 0 means empty.
     foundations: [u8; 4],
-    history: Vec<Snapshot>,
-    /// The deal number, when this game came from `Game::deal`.
-    seed: Option<u32>,
 }
 
-impl Game {
+impl GameState {
     /// Deal a numbered game using the classic Microsoft FreeCell algorithm.
-    pub fn deal(seed: u32) -> Game {
+    pub fn deal(seed: u32) -> GameState {
         // Borland C rand(): state = state * 214013 + 2531011 (mod 2^31),
         // returning bits 16..30.
         let mut state: u32 = seed;
@@ -131,12 +138,10 @@ impl Game {
             cascades[i % 8].push(deck[51 - i]);
         }
 
-        Game {
+        GameState {
             cascades,
             freecells: [None; 4],
             foundations: [0; 4],
-            history: Vec::new(),
-            seed: Some(seed),
         }
     }
 
@@ -146,19 +151,12 @@ impl Game {
         cascades: [Vec<Card>; 8],
         freecells: [Option<Card>; 4],
         foundations: [u8; 4],
-    ) -> Game {
-        Game {
+    ) -> GameState {
+        GameState {
             cascades,
             freecells,
             foundations,
-            history: Vec::new(),
-            seed: None,
         }
-    }
-
-    /// The deal number this game was dealt from, when known.
-    pub fn seed(&self) -> Option<u32> {
-        self.seed
     }
 
     pub fn cascades(&self) -> &[Vec<Card>; 8] {
@@ -177,62 +175,15 @@ impl Game {
         self.foundations.iter().all(|&r| r == 13)
     }
 
-    /// Undo the last successful move. Returns false when there is nothing to undo.
-    pub fn undo(&mut self) -> bool {
-        match self.history.pop() {
-            Some((cascades, freecells, foundations)) => {
-                self.cascades = cascades;
-                self.freecells = freecells;
-                self.foundations = foundations;
-                true
-            }
-            None => false,
-        }
-    }
-
-    /// How many moves have been played (and can be undone).
-    pub fn moves_played(&self) -> usize {
-        self.history.len()
-    }
-
-    /// Repeatedly send every playable card to the foundations.
-    /// Returns the number of cards sent home.
-    pub fn auto_play(&mut self) -> usize {
-        let mut sent = 0;
-        loop {
-            let mut progressed = false;
-            for i in 0..8 {
-                if self.do_move(Loc::Cascade(i), Loc::Foundation).is_ok() {
-                    progressed = true;
-                    sent += 1;
-                }
-            }
-            for i in 0..4 {
-                if self.do_move(Loc::Free(i), Loc::Foundation).is_ok() {
-                    progressed = true;
-                    sent += 1;
-                }
-            }
-            if !progressed {
-                return sent;
-            }
-        }
-    }
-
     /// Perform a move, returning the number of cards moved.
     ///
     /// Cascade-to-cascade moves transfer the longest ordered run that legally
     /// fits the destination, subject to the standard supermove capacity
     /// `(1 + empty free cells) * 2^(empty cascades)` — the destination column,
     /// if empty, does not count toward that doubling.
+    ///
+    /// Atomic: on `Err`, `self` is left exactly as it was before the call.
     pub fn do_move(&mut self, from: Loc, to: Loc) -> Result<usize, MoveError> {
-        let snapshot = (self.cascades.clone(), self.freecells, self.foundations);
-        let moved = self.try_move(from, to)?;
-        self.history.push(snapshot);
-        Ok(moved)
-    }
-
-    fn try_move(&mut self, from: Loc, to: Loc) -> Result<usize, MoveError> {
         match to {
             Loc::Free(cell) => {
                 if cell >= 4 {
@@ -364,11 +315,121 @@ impl Game {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct Game {
+    state: GameState,
+    history: Vec<GameState>,
+    /// The deal number, when this game came from `Game::deal`.
+    seed: Option<u32>,
+}
+
+impl Game {
+    /// Deal a numbered game using the classic Microsoft FreeCell algorithm.
+    pub fn deal(seed: u32) -> Game {
+        Game {
+            state: GameState::deal(seed),
+            history: Vec::new(),
+            seed: Some(seed),
+        }
+    }
+
+    /// Build an arbitrary position. Used by tests and available for tooling;
+    /// no consistency check is performed.
+    pub fn from_parts(
+        cascades: [Vec<Card>; 8],
+        freecells: [Option<Card>; 4],
+        foundations: [u8; 4],
+    ) -> Game {
+        Game {
+            state: GameState::from_parts(cascades, freecells, foundations),
+            history: Vec::new(),
+            seed: None,
+        }
+    }
+
+    /// The deal number this game was dealt from, when known.
+    pub fn seed(&self) -> Option<u32> {
+        self.seed
+    }
+
+    /// The current position as a plain [`GameState`] snapshot, with no
+    /// history or seed attached.
+    pub fn state(&self) -> &GameState {
+        &self.state
+    }
+
+    pub fn cascades(&self) -> &[Vec<Card>; 8] {
+        self.state.cascades()
+    }
+
+    pub fn freecells(&self) -> &[Option<Card>; 4] {
+        self.state.freecells()
+    }
+
+    pub fn foundations(&self) -> &[u8; 4] {
+        self.state.foundations()
+    }
+
+    pub fn is_won(&self) -> bool {
+        self.state.is_won()
+    }
+
+    /// Undo the last successful move. Returns false when there is nothing to undo.
+    pub fn undo(&mut self) -> bool {
+        match self.history.pop() {
+            Some(state) => {
+                self.state = state;
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// How many moves have been played (and can be undone).
+    pub fn moves_played(&self) -> usize {
+        self.history.len()
+    }
+
+    /// Repeatedly send every playable card to the foundations.
+    /// Returns the number of cards sent home.
+    pub fn auto_play(&mut self) -> usize {
+        let mut sent = 0;
+        loop {
+            let mut progressed = false;
+            for i in 0..8 {
+                if self.do_move(Loc::Cascade(i), Loc::Foundation).is_ok() {
+                    progressed = true;
+                    sent += 1;
+                }
+            }
+            for i in 0..4 {
+                if self.do_move(Loc::Free(i), Loc::Foundation).is_ok() {
+                    progressed = true;
+                    sent += 1;
+                }
+            }
+            if !progressed {
+                return sent;
+            }
+        }
+    }
+
+    /// Perform a move, returning the number of cards moved. See
+    /// [`GameState::do_move`] for the move rules; this wrapper additionally
+    /// records an undo snapshot on success.
+    pub fn do_move(&mut self, from: Loc, to: Loc) -> Result<usize, MoveError> {
+        let snapshot = self.state.clone();
+        let moved = self.state.do_move(from, to)?;
+        self.history.push(snapshot);
+        Ok(moved)
+    }
+}
+
 /// Every way the game state can change, expressed as plain data.
 ///
 /// A finished game is fully described by its deal seed plus the sequence of
 /// actions applied to it, which makes games serializable, replayable, and
-/// (with the Phase 1 Store) time-travel debuggable.
+/// (with the Store) time-travel debuggable.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Action {
     /// Start a numbered deal.

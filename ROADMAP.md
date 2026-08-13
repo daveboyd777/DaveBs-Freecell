@@ -51,11 +51,24 @@ struct Store {
 
 **Steps:**
 
-1. Write reducer tests mirroring the existing 16-test specification
-2. Extract `GameState` (cascades/freecells/foundations) from `Game`
-3. Implement `reduce` by delegating to the existing move logic
-4. Add `Store` with subscribe/dispatch and undo/redo stacks
-5. Port the CLI to dispatch actions instead of calling methods
+1. Write reducer tests mirroring the existing 16-test specification — done (#2)
+2. Extract `GameState` (cascades/freecells/foundations) from `Game` — done (#3)
+3. Implement `reduce` by delegating to the existing move logic — done (#2)
+4. Add `Store` with subscribe/dispatch and undo/redo stacks — done (#3), with two
+   deliberate deviations from the sketch above:
+   - **No `future`/redo stack yet.** Redo is tracked separately as issue #4
+     ("Add redo (time-travel) support"). Adding an unused `future` field now
+     would either trip `cargo clippy -D warnings` (dead code) or half-ship
+     #4's public API inside #3's PR.
+   - **`Store` wraps `Game` and calls the existing `reduce`**, rather than
+     reimplementing dispatch logic against a bare `GameState`. `Game`'s own
+     `history: Vec<GameState>` already *is* the "past" stack the sketch
+     describes as a separate `Store` field, so there is no second undo
+     mechanism to keep in sync. Subscribers fire only on a *successful*
+     dispatch (a rejected action produced no transition to observe), and
+     there is no unsubscribe API for v1.
+5. Port the CLI to dispatch actions instead of calling methods — tracked as #5,
+   not started; `main.rs` still calls `Game` methods directly
 
 ## Phase 2 — Visualization
 
