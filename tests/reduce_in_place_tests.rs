@@ -195,6 +195,48 @@ fn restart_action_on_a_constructed_position_is_an_error() {
     );
 }
 
+#[test]
+fn redo_action_replays_the_undone_move_in_place() {
+    let mut game = Game::from_parts(
+        [
+            cascade(&["KC", "7H"]),
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+        ],
+        [None; 4],
+        [0; 4],
+    );
+    reduce_in_place(
+        &mut game,
+        Action::Move {
+            from: Loc::Cascade(0),
+            to: Loc::Free(0),
+        },
+    )
+    .unwrap();
+    let after_move = game.cascades().clone();
+    reduce_in_place(&mut game, Action::Undo).unwrap();
+    reduce_in_place(&mut game, Action::Redo).expect("one undone move to redo");
+
+    assert_eq!(game.cascades(), &after_move);
+}
+
+#[test]
+fn redo_action_with_no_future_is_an_error_and_does_not_mutate() {
+    let mut game = Game::deal(617);
+    let before = game.clone();
+    assert_eq!(
+        reduce_in_place(&mut game, Action::Redo).unwrap_err(),
+        ActionError::NothingToRedo
+    );
+    assert_eq!(game.cascades(), before.cascades());
+}
+
 /// The whole point of `reduce_in_place`: it must be observably identical to
 /// `reduce` for every action, so swapping one for the other (as `Store` did
 /// in issue #24) changes performance, not behavior.
@@ -209,6 +251,8 @@ fn reduce_in_place_matches_reduce_across_every_action_type() {
             from: Loc::Cascade(0),
             to: Loc::Free(1),
         },
+        Action::Undo,
+        Action::Redo,
         Action::AutoPlay,
         Action::Undo,
         Action::Restart,

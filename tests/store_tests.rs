@@ -183,6 +183,99 @@ fn undo_dispatch_with_no_history_is_an_error_and_does_not_notify() {
     assert_eq!(*calls.borrow(), 0);
 }
 
+#[test]
+fn redo_dispatch_restores_the_undone_state_and_notifies() {
+    let game = Game::from_parts(
+        [
+            cascade(&["KC", "7H"]),
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+        ],
+        [None; 4],
+        [0; 4],
+    );
+    let mut store = Store::from_game(game);
+
+    store
+        .dispatch(Action::Move {
+            from: Loc::Cascade(0),
+            to: Loc::Free(0),
+        })
+        .unwrap();
+    let after_move = store.state().clone();
+    store.dispatch(Action::Undo).unwrap();
+
+    let calls = Rc::new(RefCell::new(0));
+    let calls_clone = Rc::clone(&calls);
+    store.subscribe(move |_, _| *calls_clone.borrow_mut() += 1);
+
+    store
+        .dispatch(Action::Redo)
+        .expect("one undone move to redo");
+
+    assert_eq!(store.state(), &after_move);
+    assert_eq!(*calls.borrow(), 1);
+}
+
+#[test]
+fn redo_dispatch_with_no_future_is_an_error_and_does_not_notify() {
+    let mut store = Store::new(617);
+    let calls = Rc::new(RefCell::new(0));
+    let calls_clone = Rc::clone(&calls);
+    store.subscribe(move |_, _| *calls_clone.borrow_mut() += 1);
+
+    assert_eq!(
+        store.dispatch(Action::Redo).unwrap_err(),
+        ActionError::NothingToRedo
+    );
+    assert_eq!(*calls.borrow(), 0);
+}
+
+#[test]
+fn a_move_dispatch_after_undo_clears_the_redo_stack() {
+    let game = Game::from_parts(
+        [
+            cascade(&["KC", "7H"]),
+            cascade(&["8S"]),
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+        ],
+        [None; 4],
+        [0; 4],
+    );
+    let mut store = Store::from_game(game);
+
+    store
+        .dispatch(Action::Move {
+            from: Loc::Cascade(0),
+            to: Loc::Free(0),
+        })
+        .unwrap();
+    store.dispatch(Action::Undo).unwrap();
+    // A different move instead of redoing the free-cell move.
+    store
+        .dispatch(Action::Move {
+            from: Loc::Cascade(1),
+            to: Loc::Free(1),
+        })
+        .unwrap();
+
+    assert_eq!(
+        store.dispatch(Action::Redo).unwrap_err(),
+        ActionError::NothingToRedo,
+        "a fresh dispatch after undo must invalidate the old redo target"
+    );
+}
+
 /// Demonstrates the pattern the future stats module (issues #10/#11) will
 /// use: a subscriber recording every dispatched action for later analysis,
 /// without touching game logic.

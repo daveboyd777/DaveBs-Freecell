@@ -190,6 +190,84 @@ fn restart_action_on_a_constructed_position_is_an_error() {
 }
 
 #[test]
+fn redo_action_replays_the_undone_move() {
+    let g0 = Game::from_parts(
+        [
+            cascade(&["KC", "7H"]),
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+        ],
+        [None; 4],
+        [0; 4],
+    );
+    let g1 = reduce(
+        &g0,
+        Action::Move {
+            from: Loc::Cascade(0),
+            to: Loc::Free(0),
+        },
+    )
+    .unwrap();
+    let g2 = reduce(&g1, Action::Undo).unwrap();
+    let g3 = reduce(&g2, Action::Redo).expect("one undone move to redo");
+    assert_eq!(g3.cascades(), g1.cascades());
+    assert_eq!(g3.freecells(), g1.freecells());
+}
+
+#[test]
+fn redo_action_with_no_future_is_an_error() {
+    let game = Game::deal(617);
+    assert_eq!(
+        reduce(&game, Action::Redo).unwrap_err(),
+        ActionError::NothingToRedo
+    );
+}
+
+#[test]
+fn a_move_action_after_undo_invalidates_the_redo_action() {
+    let g0 = Game::from_parts(
+        [
+            cascade(&["KC", "7H"]),
+            cascade(&["8S"]),
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+        ],
+        [None; 4],
+        [0; 4],
+    );
+    let g1 = reduce(
+        &g0,
+        Action::Move {
+            from: Loc::Cascade(0),
+            to: Loc::Free(0),
+        },
+    )
+    .unwrap();
+    let g2 = reduce(&g1, Action::Undo).unwrap();
+    let g3 = reduce(
+        &g2,
+        Action::Move {
+            from: Loc::Cascade(1),
+            to: Loc::Free(1),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        reduce(&g3, Action::Redo).unwrap_err(),
+        ActionError::NothingToRedo
+    );
+}
+
+#[test]
 fn a_finished_game_is_replayable_from_its_action_log() {
     // The Redux payoff: (seed, actions) fully reconstructs a game.
     let actions = [
