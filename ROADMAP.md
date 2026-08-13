@@ -77,8 +77,16 @@ struct Store {
      in `Store` — this is the literal issue #4 requirement, implemented once
      at the source of every position-changing action instead of duplicated
      across call sites.
-5. Port the CLI to dispatch actions instead of calling methods — tracked as #5,
-   not started; `main.rs` still calls `Game` methods directly
+5. Port the CLI to dispatch actions instead of calling methods — done (#5).
+   `main.rs` now builds a `Store` and dispatches `Action` for every command
+   (moves, undo, redo, autoplay, restart, new deal), gaining a `y`/redo
+   command for free. A new `replay(seed, actions) -> Result<Game, ActionError>`
+   generalizes the `(seed, Vec<Action>)` replay pattern already proven in
+   `tests/reducer_tests.rs`; the CLI calls it live on every win, printing the
+   action log and verifying the replay reproduces the win — not just an
+   assertion in tests, a runtime proof every time a game finishes.
+
+**Phase 1 is now complete.**
 
 ## Phase 2 — Visualization
 
