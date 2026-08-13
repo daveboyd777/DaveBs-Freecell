@@ -315,7 +315,7 @@ impl GameState {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Game {
     state: GameState,
     /// States reachable by [`Game::undo`], newest last.

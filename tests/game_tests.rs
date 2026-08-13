@@ -8,7 +8,7 @@
 //! - `Game::do_move(from, to)` — validated moves incl. multi-card supermoves
 //! - `Game::undo()`, `Game::is_won()`
 
-use freecell::{Card, Game, Loc, Suit};
+use freecell::{replay, Action, Card, Game, Loc, Suit};
 
 /// Parse "JD" / "TC" / "AS" style shorthand into a Card.
 fn c(s: &str) -> Card {
@@ -496,4 +496,39 @@ fn undo_then_redo_round_trips_to_the_exact_same_state() {
     // And undo remains available after a redo.
     assert!(game.undo(), "undo should work again after a redo");
     assert_eq!(game.cascades(), &before);
+}
+
+// ---------------------------------------------------------------- replay
+
+#[test]
+fn replay_reconstructs_the_exact_same_game_as_playing_it_live() {
+    let seed = 617;
+    let moves = [
+        (Loc::Cascade(0), Loc::Free(0)),
+        (Loc::Cascade(1), Loc::Free(1)),
+    ];
+
+    let mut live = Game::deal(seed);
+    for &(from, to) in &moves {
+        live.do_move(from, to).unwrap();
+    }
+
+    let actions: Vec<Action> = moves
+        .iter()
+        .map(|&(from, to)| Action::Move { from, to })
+        .collect();
+    let rebuilt = replay(seed, &actions).expect("both moves are legal");
+
+    assert_eq!(rebuilt.cascades(), live.cascades());
+    assert_eq!(rebuilt.freecells(), live.freecells());
+    assert_eq!(
+        rebuilt, live,
+        "replay must match the full Game, not just its position"
+    );
+}
+
+#[test]
+fn replay_with_no_actions_is_just_the_bare_deal() {
+    let rebuilt = replay(11982, &[]).expect("empty replay always succeeds");
+    assert_eq!(rebuilt, Game::deal(11982));
 }

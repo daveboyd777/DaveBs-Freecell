@@ -1,4 +1,4 @@
-use freecell::{replay, Action, Loc, Store};
+use freecell::{replay, Action, Game, Loc, Store};
 use std::io::{self, BufRead, Write};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -27,9 +27,15 @@ fn main() {
             );
             println!("Type n for a new game or q to quit.");
             if !replay_shown {
-                print_replay(original_seed, &log);
+                print_replay(original_seed, &log, store.game());
                 replay_shown = true;
             }
+        } else {
+            // Not won right now -- e.g. undo stepped back out of a win, or a
+            // new deal/restart started. Reset so a later redo/replay back
+            // into a won state gets verified again instead of being
+            // silently skipped.
+            replay_shown = false;
         }
 
         print!("> ");
@@ -66,7 +72,6 @@ fn main() {
             }
             "r" | "restart" => {
                 dispatch(&mut store, &mut log, Action::Restart);
-                replay_shown = false;
                 continue;
             }
             _ => {}
@@ -75,7 +80,6 @@ fn main() {
         if let Some(rest) = line.strip_prefix('n') {
             let new_seed = rest.trim().parse::<u32>().unwrap_or_else(|_| random_seed());
             dispatch(&mut store, &mut log, Action::Deal { seed: new_seed });
-            replay_shown = false;
             continue;
         }
 
@@ -104,16 +108,18 @@ fn dispatch(store: &mut Store, log: &mut Vec<Action>, action: Action) -> bool {
 }
 
 /// Print the `(seed, actions)` replay log and verify it live: replaying it
-/// from `seed` via [`freecell::replay`] must reproduce the current win.
-/// This is the proof issue #5 asks for, not just an assertion in tests.
-fn print_replay(seed: u32, log: &[Action]) {
+/// from `seed` via [`freecell::replay`] must reproduce `expected` — the live
+/// store's actual current `Game` (position, undo/redo history, and deal
+/// seed), not merely *some* winning position. This is the proof issue #5
+/// asks for, not just an assertion in tests.
+fn print_replay(seed: u32, log: &[Action], expected: &Game) {
     println!("Replay log — deal #{seed}, {} action(s):", log.len());
     println!("  {log:?}");
     match replay(seed, log) {
-        Ok(rebuilt) if rebuilt.is_won() => {
-            println!("  Replay verified: (seed, actions) reproduces this win.")
+        Ok(rebuilt) if &rebuilt == expected => {
+            println!("  Replay verified: (seed, actions) reproduces the current game exactly.")
         }
-        Ok(_) => println!("  Replay produced a different, non-winning position (this is a bug)."),
+        Ok(_) => println!("  Replay produced a different game (this is a bug)."),
         Err(e) => println!("  Replay failed: {e} (this is a bug)."),
     }
 }
