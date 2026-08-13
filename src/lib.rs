@@ -476,6 +476,14 @@ impl From<MoveError> for ActionError {
 /// Never mutates its input, never performs I/O. `AutoPlay` always succeeds
 /// (sending zero cards home is not an error); every other action reports
 /// failures without changing anything.
+///
+/// This is the immutable, by-reference API: callers keep a usable `game`
+/// after the call (relied on by [`tests/reducer_tests.rs`]'s purity checks)
+/// and get back an independent `Game`. Each call clones the *entire* input
+/// `Game`, including its `history`, so repeated dispatch through `reduce`
+/// costs grow with moves already played. [`Store`] uses [`reduce_in_place`]
+/// instead for that reason; prefer `reduce` for tests, replay/comparison,
+/// or any call site that genuinely wants an immutable transform.
 pub fn reduce(game: &Game, action: Action) -> Result<Game, ActionError> {
     match action {
         Action::Deal { seed } => Ok(Game::deal(seed)),
@@ -499,6 +507,47 @@ pub fn reduce(game: &Game, action: Action) -> Result<Game, ActionError> {
         }
         Action::Restart => match game.seed() {
             Some(seed) => Ok(Game::deal(seed)),
+            None => Err(ActionError::UnknownDeal),
+        },
+    }
+}
+
+/// Efficient sibling of [`reduce`]: applies `action` to `game` in place via
+/// `Game`'s own mutating methods (`do_move`, `undo`, `auto_play`), instead of
+/// cloning the whole `Game` (and its `history`) first. Same semantics as
+/// `reduce` for every action — same success/failure results, and atomic on
+/// failure: `game` is left exactly as it was when `Err` is returned.
+///
+/// Intended for [`Store::dispatch`], whose per-move cost must not scale with
+/// how many moves have already been played. `reduce` itself is unaffected
+/// and unchanged — issue #24 tracks fixing the dispatch cost, not the pure
+/// reducer's contract.
+pub fn reduce_in_place(game: &mut Game, action: Action) -> Result<(), ActionError> {
+    match action {
+        Action::Deal { seed } => {
+            *game = Game::deal(seed);
+            Ok(())
+        }
+        Action::Move { from, to } => {
+            game.do_move(from, to)?;
+            Ok(())
+        }
+        Action::AutoPlay => {
+            game.auto_play();
+            Ok(())
+        }
+        Action::Undo => {
+            if game.undo() {
+                Ok(())
+            } else {
+                Err(ActionError::NothingToUndo)
+            }
+        }
+        Action::Restart => match game.seed() {
+            Some(seed) => {
+                *game = Game::deal(seed);
+                Ok(())
+            }
             None => Err(ActionError::UnknownDeal),
         },
     }
