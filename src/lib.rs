@@ -603,7 +603,7 @@ pub fn reduce_in_place(game: &mut Game, action: Action) -> Result<(), ActionErro
 
 /// Reconstruct a [`Game`] from a deal seed and the full sequence of actions
 /// applied to it: `Game::deal(seed)` followed by dispatching every action in
-/// `actions`, in order, through [`reduce`].
+/// `actions`, in order, through [`reduce_in_place`].
 ///
 /// This is the replay contract issue #5 asks for: a finished (or in-progress)
 /// game is fully described by `(seed, Vec<Action>)`. Because `Deal` and
@@ -613,13 +613,19 @@ pub fn reduce_in_place(game: &mut Game, action: Action) -> Result<(), ActionErro
 /// final state — the whole session's action log is always a valid replay
 /// from its original seed, with no need to reset or trim it.
 ///
+/// Uses `reduce_in_place` rather than `reduce`, for the same reason `Store`
+/// does (issue #24): `reduce` clones the entire `Game` — including its
+/// growing `past`/`future` stacks — per action, which would make replaying a
+/// long action log (e.g. the CLI's live on-win check) cost O(n²) instead of
+/// linear.
+///
 /// Returns the first error encountered, if any action in the sequence was
 /// illegal (this should not happen when replaying a log of actions that were
 /// each already successfully dispatched once).
 pub fn replay(seed: u32, actions: &[Action]) -> Result<Game, ActionError> {
     let mut game = Game::deal(seed);
     for &action in actions {
-        game = reduce(&game, action)?;
+        reduce_in_place(&mut game, action)?;
     }
     Ok(game)
 }
