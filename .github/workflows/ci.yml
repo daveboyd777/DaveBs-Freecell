@@ -18,12 +18,17 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
+      # eframe/egui (the gui workspace member) link against these on Linux.
+      - name: Install Linux GUI toolkit dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev
       - name: Check formatting
-        run: cargo fmt --check
+        run: cargo fmt --all --check
       - name: Lint
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Test
-        run: cargo test
+        run: cargo test --workspace
 
   build-windows:
     name: Build (Windows)
@@ -34,3 +39,5 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Build release binary
         run: cargo build --release
+      - name: Build tui/gui workspace members (dev profile)
+        run: cargo build --workspace --exclude freecell

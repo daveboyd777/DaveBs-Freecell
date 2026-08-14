@@ -1,3 +1,14 @@
+# Workspace root. `freecell` (this package: the engine lib + text CLI binary)
+# is the implicit root member. `tui` and `gui` (Phase 2, issues #6/#7/#8/#9)
+# are separate member crates rather than dependencies/features of this crate
+# because their dependency graphs don't coexist cleanly in one Cargo.toml:
+# ratatui's crossterm backend does not target wasm32-unknown-unknown (needed
+# by gui's WASM build, issue #9), and neither UI toolkit belongs in the pure
+# engine's own dependency tree.
+[workspace]
+members = ["tui", "gui"]
+resolver = "2"
+
 [package]
 name = "freecell"
 version = "0.1.0"

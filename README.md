@@ -91,18 +91,27 @@ dealing, move legality, supermove capacity, win detection, and undo semantics
 were all written as failing tests first.
 
 ```sh
-cargo test            # run the engine specification
-cargo fmt --check     # formatting
-cargo clippy          # lints
+cargo test            # run the engine specification (freecell package only)
+cargo fmt --all --check     # formatting, whole workspace
+cargo clippy --workspace --all-targets -- -D warnings   # lints, whole workspace
+cargo test --workspace      # tests, whole workspace (incl. tui/gui once they have any)
 ```
 
-Project layout:
+Project layout (a Cargo workspace):
 
 ```
+Cargo.toml            workspace root + the freecell package (engine + text CLI)
 src/lib.rs            game engine (no I/O)
-src/main.rs           terminal interface
-tests/game_tests.rs   executable specification of the engine
+src/store.rs          Store: dispatches Action, notifies subscribers
+src/main.rs           text CLI (dispatches Action through a Store)
+tests/                engine, reducer, and Store test suites
+tui/                  ratatui terminal UI (freecell-tui) -- WIP, Phase 2
+gui/                  egui/eframe desktop + WASM UI (freecell-gui) -- WIP, Phase 2
 ```
+
+`tui/` and `gui/` are separate workspace members (not features of `freecell`)
+because their dependencies don't coexist cleanly in one crate -- see the
+comment at the top of the root `Cargo.toml`.
 
 ## Roadmap
 
