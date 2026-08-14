@@ -86,7 +86,12 @@ struct App {
     store: Store,
     original_seed: u32,
     log: Rc<RefCell<Vec<Action>>>,
-    replay_shown: bool,
+    /// The replay-proof message, computed once and cached the moment a win
+    /// is detected in `dispatch` (rather than recomputed by `draw_footer`
+    /// every frame -- replaying a long action log on every draw would be
+    /// wasteful once the win screen is up). `None` before a win, or after
+    /// undo/restart/a new deal steps back out of one.
+    replay_result: Option<String>,
     selected: Option<Loc>,
     input: String,
     status: Option<String>,
@@ -108,7 +113,7 @@ impl App {
             store,
             original_seed: seed,
             log,
-            replay_shown: false,
+            replay_result: None,
             selected: None,
             input: String::new(),
             status: None,
@@ -121,8 +126,13 @@ impl App {
             Ok(()) => self.status = None,
             Err(e) => self.status = Some(format!("Error: {e}")),
         }
-        if !self.store.state().is_won() {
-            self.replay_shown = false;
+        if self.store.state().is_won() {
+            if self.replay_result.is_none() {
+                let summary = replay_summary(self);
+                self.replay_result = Some(summary);
+            }
+        } else {
+            self.replay_result = None;
         }
     }
 
@@ -138,8 +148,14 @@ impl App {
             "a" | "auto" => {
                 let before = self.store.game().moves_played();
                 self.dispatch(Action::AutoPlay);
-                let sent = self.store.game().moves_played() - before;
-                self.status = Some(format!("Sent {sent} card(s) home."));
+                // `dispatch` already set `self.status` to an error message
+                // if the store rejected the action (AutoPlay itself never
+                // fails, but keep this defensive in case that changes); only
+                // overwrite it with the count on an actual success.
+                if self.status.is_none() {
+                    let sent = self.store.game().moves_played() - before;
+                    self.status = Some(format!("Sent {sent} card(s) home."));
+                }
                 return;
             }
             "r" | "restart" => return self.dispatch(Action::Restart),
@@ -269,7 +285,10 @@ fn draw_status(frame: &mut ratatui::Frame, area: Rect, app: &App) {
 fn card_span(card: freecell::Card) -> Span<'static> {
     let style = match board::card_color(card) {
         board::CardColor::Red => Style::default().fg(Color::Red),
-        board::CardColor::Black => Style::default().fg(Color::White),
+        // Leave the foreground unset so the terminal's own default applies,
+        // matching `CardColor::Black`'s documented intent -- hard-coding
+        // white here would be unreadable on a light-background terminal.
+        board::CardColor::Black => Style::default(),
     };
     Span::styled(format!("{card} "), style)
 }
@@ -315,16 +334,44 @@ fn draw_board(frame: &mut ratatui::Frame, area: Rect, app: &App) {
 
     for (i, &rect) in layout.cascades.iter().enumerate() {
         let selected = app.selected == Some(Loc::Cascade(i));
-        let lines: Vec<Line> = state.cascades()[i]
-            .iter()
-            .map(|&card| Line::from(vec![card_span(card)]))
-            .collect();
+        let lines = cascade_lines(&state.cascades()[i], rect);
         let block = Block::default()
             .title(format!("{}", i + 1))
             .borders(Borders::ALL)
             .border_style(border_style(selected));
         frame.render_widget(Paragraph::new(lines).block(block), rect);
     }
+}
+
+/// Render a cascade's cards for a `height`-row bordered cell, truncating
+/// from the top (with a "+N more" indicator) rather than the bottom when it
+/// doesn't fit: the bottom (frontmost) card is the only one that can ever be
+/// moved, so it must stay visible even when the column is deep.
+fn cascade_lines(cascade: &[freecell::Card], rect: Rect) -> Vec<Line<'static>> {
+    let available_rows = rect.height.saturating_sub(2) as usize; // minus borders
+    if cascade.is_empty() || available_rows == 0 {
+        return Vec::new();
+    }
+    if cascade.len() <= available_rows {
+        return cascade
+            .iter()
+            .map(|&card| Line::from(vec![card_span(card)]))
+            .collect();
+    }
+    if available_rows == 1 {
+        // No room for both an indicator and a card: prioritize the playable
+        // bottom card.
+        return vec![Line::from(vec![card_span(*cascade.last().unwrap())])];
+    }
+    let visible = available_rows - 1;
+    let hidden = cascade.len() - visible;
+    let mut lines = vec![Line::from(format!("+{hidden} more"))];
+    lines.extend(
+        cascade[cascade.len() - visible..]
+            .iter()
+            .map(|&card| Line::from(vec![card_span(card)])),
+    );
+    lines
 }
 
 fn border_style(selected: bool) -> Style {
@@ -378,8 +425,8 @@ fn draw_footer(frame: &mut ratatui::Frame, area: Rect, app: &App) {
             .join("  ");
         lines.push(Line::from(format!("Log: {log_line}")));
     }
-    if app.store.state().is_won() && !app.replay_shown {
-        lines.push(Line::from(replay_summary(app)));
+    if let Some(result) = &app.replay_result {
+        lines.push(Line::from(result.clone()));
     }
     lines.push(Line::from("Press ? for help."));
 
