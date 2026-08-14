@@ -75,6 +75,37 @@ pub enum Loc {
     Foundation,
 }
 
+/// Parse the shared two-character move command grammar: source then
+/// destination, `1`-`8` for cascade columns, `a`-`d` for free cells, `h` or
+/// `f` for foundations (e.g. "1a", "35", "ah", "2h"). Whitespace between
+/// (or around) the two characters is ignored. Foundations are never a valid
+/// source (`h`/`f` as the first character is rejected), since a card only
+/// ever leaves a foundation via undo/redo, not a dispatched move.
+///
+/// Shared by the text CLI (`src/main.rs`) and the ratatui TUI (`tui/`) so
+/// the command grammar has one implementation and one set of tests.
+pub fn parse_move(cmd: &str) -> Option<(Loc, Loc)> {
+    let mut chars = cmd.chars().filter(|c| !c.is_whitespace());
+    let from = parse_loc(chars.next()?)?;
+    let to = parse_loc(chars.next()?)?;
+    if chars.next().is_some() {
+        return None;
+    }
+    if from == Loc::Foundation {
+        return None;
+    }
+    Some((from, to))
+}
+
+fn parse_loc(c: char) -> Option<Loc> {
+    match c {
+        '1'..='8' => Some(Loc::Cascade(c as usize - '1' as usize)),
+        'a'..='d' => Some(Loc::Free(c as usize - 'a' as usize)),
+        'h' | 'f' => Some(Loc::Foundation),
+        _ => None,
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MoveError {
     EmptySource,
