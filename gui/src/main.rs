@@ -1,42 +1,411 @@
-//! Scaffolding for issue #8 (egui/eframe desktop app sharing the same
-//! Store) and issue #9 (the same app cross-compiled to WASM).
+//! egui/eframe desktop UI for DaveB's Freecell (issue #8).
 //!
-//! This is a minimal placeholder proving the workspace wiring -- a real
-//! `Store`, a real eframe app -- not the actual card rendering or move
-//! input, which land in #8.
+//! Shares the exact same `Store`/engine as the text CLI and the ratatui
+//! TUI: no move rules live here. Board rendering reads `GameState` directly
+//! every frame; the only UI-only state that feeds into it is
+//! `FreecellApp::selected`, which drives legal-destination dimming and the
+//! selected-run highlight the same way the TUI does (issue #7), by asking
+//! [`freecell::GameState::can_move`] and
+//! [`freecell::GameState::movable_run_len`] rather than reimplementing any
+//! move rule.
+//!
+//! Mouse input is click-to-select-then-click-to-move, identical to the
+//! TUI's mouse handling: click a location to select it, click a second
+//! location to dispatch the move, click the same location again to
+//! deselect. There is no textual move-command input in the GUI; a toolbar
+//! of buttons covers undo/redo/auto-play/restart/new-game instead.
+
+mod board;
 
 use eframe::egui;
-use freecell::Store;
+use egui::{Align2, Color32, FontId, Sense, Stroke, StrokeKind};
+use freecell::{Action, GameState, Loc, Store, replay};
+use std::cell::RefCell;
+use std::rc::Rc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
-struct FreecellApp {
-    store: Store,
+fn random_seed() -> u32 {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(1);
+    nanos % 32000 + 1
 }
 
-impl Default for FreecellApp {
-    fn default() -> Self {
+/// Render a location the same way the CLI's/TUI's move grammar spells it,
+/// for the action-log line (e.g. `Loc::Free(1)` -> "b").
+fn loc_char(loc: Loc) -> char {
+    match loc {
+        Loc::Cascade(i) => (b'1' + i as u8) as char,
+        Loc::Free(i) => (b'a' + i as u8) as char,
+        Loc::Foundation => 'h',
+    }
+}
+
+fn describe(action: Action) -> String {
+    match action {
+        Action::Deal { seed } => format!("Deal #{seed}"),
+        Action::Move { from, to } => format!("Move {}{}", loc_char(from), loc_char(to)),
+        Action::AutoPlay => "AutoPlay".to_string(),
+        Action::Undo => "Undo".to_string(),
+        Action::Redo => "Redo".to_string(),
+        Action::Restart => "Restart".to_string(),
+    }
+}
+
+/// Application state that is *not* part of [`freecell::GameState`]: the
+/// running `Store`, the replay log, and purely presentational state
+/// (selection, status message, the new-game seed text field).
+struct FreecellApp {
+    store: Store,
+    original_seed: u32,
+    log: Rc<RefCell<Vec<Action>>>,
+    /// The replay-proof message, computed once and cached the moment a win
+    /// is detected in `dispatch`, mirroring the TUI's caching (rather than
+    /// recomputing -- and replaying the whole action log -- on every frame
+    /// the win screen is up).
+    replay_result: Option<String>,
+    selected: Option<Loc>,
+    status: Option<String>,
+    seed_input: String,
+}
+
+impl FreecellApp {
+    fn new(seed: u32) -> Self {
+        let mut store = Store::new(seed);
+        let log: Rc<RefCell<Vec<Action>>> = Rc::new(RefCell::new(Vec::new()));
+        let log_for_subscriber = Rc::clone(&log);
+        // Store-subscriber wiring (issue #3/#6's pattern, reused here):
+        // every successfully dispatched action is recorded here,
+        // independent of the board rendering (which reads `store.state()`
+        // directly).
+        store.subscribe(move |_state, action| {
+            log_for_subscriber.borrow_mut().push(*action);
+        });
         Self {
-            store: Store::new(617),
+            store,
+            original_seed: seed,
+            log,
+            replay_result: None,
+            selected: None,
+            status: None,
+            seed_input: String::new(),
         }
+    }
+
+    fn dispatch(&mut self, action: Action) {
+        match self.store.dispatch(action) {
+            Ok(()) => self.status = None,
+            Err(e) => self.status = Some(format!("Error: {e}")),
+        }
+        if self.store.state().is_won() {
+            if self.replay_result.is_none() {
+                let summary = replay_summary(self);
+                self.replay_result = Some(summary);
+            }
+        } else {
+            self.replay_result = None;
+        }
+    }
+
+    /// Click-to-select-then-click-to-move handling, identical in spirit to
+    /// the TUI's `handle_click` (issue #6/#7).
+    fn handle_click(&mut self, loc: Loc) {
+        match self.selected.take() {
+            None => self.selected = Some(loc),
+            Some(from) if from == loc => self.selected = None,
+            Some(from) => self.dispatch(Action::Move { from, to: loc }),
+        }
+    }
+
+    fn draw_toolbar(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            if ui.button("Undo").clicked() {
+                self.dispatch(Action::Undo);
+            }
+            if ui.button("Redo").clicked() {
+                self.dispatch(Action::Redo);
+            }
+            if ui.button("Auto-Play").clicked() {
+                let before = self.store.game().moves_played();
+                self.dispatch(Action::AutoPlay);
+                // `dispatch` already set `self.status` to an error message
+                // if the store rejected the action; only overwrite it with
+                // the count on an actual success (mirrors the TUI).
+                if self.status.is_none() {
+                    let sent = self.store.game().moves_played() - before;
+                    self.status = Some(format!("Sent {sent} card(s) home."));
+                }
+            }
+            if ui.button("Restart").clicked() {
+                self.dispatch(Action::Restart);
+            }
+            ui.separator();
+            ui.label("Seed:");
+            ui.add(egui::TextEdit::singleline(&mut self.seed_input).desired_width(60.0));
+            if ui.button("New Game").clicked() {
+                let seed = self
+                    .seed_input
+                    .trim()
+                    .parse::<u32>()
+                    .unwrap_or_else(|_| random_seed());
+                self.dispatch(Action::Deal { seed });
+            }
+        });
+    }
+
+    fn draw_status(&self, ui: &mut egui::Ui) {
+        let seed = self.store.game().seed().unwrap_or(self.original_seed);
+        let moves = self.store.game().moves_played();
+        let mut text = format!("Game #{seed}   moves: {moves}");
+        if self.store.state().is_won() {
+            text.push_str("   *** WON ***");
+        }
+        ui.label(text);
+
+        if let Some(status) = &self.status {
+            ui.colored_label(Color32::from_rgb(200, 90, 0), status);
+        }
+
+        let recent: Vec<Action> = self
+            .log
+            .borrow()
+            .iter()
+            .rev()
+            .take(3)
+            .rev()
+            .copied()
+            .collect();
+        if !recent.is_empty() {
+            let log_line = recent
+                .iter()
+                .map(|&a| describe(a))
+                .collect::<Vec<_>>()
+                .join("  ");
+            ui.label(format!("Log: {log_line}"));
+        }
+
+        if let Some(result) = &self.replay_result {
+            ui.label(result);
+        }
+    }
+
+    fn draw_board(&mut self, ui: &mut egui::Ui) {
+        let area = ui.available_rect_before_wrap();
+        let layout = board::layout(area);
+
+        // One interactive region for the whole board; the exact clicked
+        // `Loc` is resolved via `board::hit_test`, mirroring the TUI's
+        // single hit-test-per-click approach (issue #6/#7) rather than one
+        // widget per slot.
+        let response = ui.interact(area, ui.id().with("gui-board"), Sense::click());
+        let clicked = response
+            .clicked()
+            .then(|| response.interact_pointer_pos())
+            .flatten()
+            .and_then(|pos| board::hit_test(&layout, pos));
+
+        let state = self.store.state();
+
+        for (i, &rect) in layout.free_cells.iter().enumerate() {
+            let loc = Loc::Free(i);
+            let slot = slot_style(self.selected, state, loc);
+            match state.freecells()[i] {
+                Some(card) => draw_card(ui.painter(), rect, card, false),
+                None => draw_empty_slot(ui.painter(), rect, slot == SlotStyle::Illegal),
+            }
+            draw_slot_overlay(ui.painter(), rect, slot);
+        }
+
+        // Foundations are addressed collectively (`Loc::Foundation` picks
+        // the pile by suit), so every displayed pile shares one legality
+        // classification, matching the TUI (issue #7).
+        let foundation_slot = slot_style(self.selected, state, Loc::Foundation);
+        for (i, &rect) in layout.foundations.iter().enumerate() {
+            draw_foundation(ui.painter(), rect, i, state.foundations()[i]);
+            draw_slot_overlay(ui.painter(), rect, foundation_slot);
+        }
+
+        for (i, &column) in layout.cascades.iter().enumerate() {
+            let loc = Loc::Cascade(i);
+            let slot = slot_style(self.selected, state, loc);
+            let cards = &state.cascades()[i];
+            let run_len = if self.selected == Some(loc) {
+                state.movable_run_len(loc)
+            } else {
+                0
+            };
+            if cards.is_empty() {
+                let slot_rect = board::card_rect_in_cascade(column, 0);
+                draw_empty_slot(ui.painter(), slot_rect, slot == SlotStyle::Illegal);
+            } else {
+                for (idx, &card) in cards.iter().enumerate() {
+                    let rect = board::card_rect_in_cascade(column, idx);
+                    let highlighted = cards.len() - idx <= run_len;
+                    draw_card(ui.painter(), rect, card, highlighted);
+                }
+            }
+            let occupied = board::cascade_occupied_rect(column, cards.len());
+            draw_slot_overlay(ui.painter(), occupied, slot);
+        }
+
+        if let Some(loc) = clicked {
+            self.handle_click(loc);
+        }
+    }
+}
+
+/// How a board slot's overlay should render, given the current selection.
+/// `Illegal` is only ever produced for a slot other than the selected one
+/// (see `slot_style`) -- the selected slot is always `Selected`, never run
+/// through the legality check.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SlotStyle {
+    Selected,
+    Illegal,
+    Normal,
+}
+
+/// Classify a candidate destination `loc` relative to `selected`, using
+/// [`freecell::GameState::can_move`] as the single source of truth for
+/// legality (issue #7) -- this function never reimplements a move rule.
+/// Always `Normal` when nothing is selected.
+fn slot_style(selected: Option<Loc>, state: &GameState, loc: Loc) -> SlotStyle {
+    match selected {
+        Some(s) if s == loc => SlotStyle::Selected,
+        Some(s) => {
+            if state.can_move(s, loc).is_ok() {
+                SlotStyle::Normal
+            } else {
+                SlotStyle::Illegal
+            }
+        }
+        None => SlotStyle::Normal,
+    }
+}
+
+fn draw_slot_overlay(painter: &egui::Painter, rect: egui::Rect, slot: SlotStyle) {
+    match slot {
+        SlotStyle::Selected => {
+            painter.rect_stroke(
+                rect,
+                6.0,
+                Stroke::new(3.0, Color32::from_rgb(255, 195, 0)),
+                StrokeKind::Outside,
+            );
+        }
+        SlotStyle::Illegal => {
+            painter.rect_filled(rect, 6.0, Color32::from_black_alpha(120));
+        }
+        SlotStyle::Normal => {}
+    }
+}
+
+fn draw_card(painter: &egui::Painter, rect: egui::Rect, card: freecell::Card, highlighted: bool) {
+    let background = if highlighted {
+        Color32::from_rgb(255, 244, 190)
+    } else {
+        Color32::WHITE
+    };
+    painter.rect_filled(rect, 6.0, background);
+    painter.rect_stroke(
+        rect,
+        6.0,
+        Stroke::new(1.0, Color32::DARK_GRAY),
+        StrokeKind::Inside,
+    );
+    let text_color = if card.suit.is_red() {
+        Color32::from_rgb(190, 20, 20)
+    } else {
+        Color32::BLACK
+    };
+    painter.text(
+        rect.left_top() + egui::vec2(6.0, 4.0),
+        Align2::LEFT_TOP,
+        card.to_string(),
+        FontId::proportional(20.0),
+        text_color,
+    );
+}
+
+fn draw_empty_slot(painter: &egui::Painter, rect: egui::Rect, dimmed: bool) {
+    let color = if dimmed {
+        Color32::from_gray(90)
+    } else {
+        Color32::GRAY
+    };
+    painter.rect_stroke(rect, 6.0, Stroke::new(1.5, color), StrokeKind::Inside);
+}
+
+fn draw_foundation(painter: &egui::Painter, rect: egui::Rect, suit_index: usize, rank: u8) {
+    const SUIT_CHARS: [char; 4] = ['C', 'D', 'H', 'S'];
+    painter.rect_filled(rect, 6.0, Color32::from_gray(235));
+    painter.rect_stroke(
+        rect,
+        6.0,
+        Stroke::new(1.0, Color32::DARK_GRAY),
+        StrokeKind::Inside,
+    );
+    let label = if rank == 0 {
+        format!("{}-", SUIT_CHARS[suit_index])
+    } else {
+        format!("{}{}", SUIT_CHARS[suit_index], rank_char(rank))
+    };
+    painter.text(
+        rect.center(),
+        Align2::CENTER_CENTER,
+        label,
+        FontId::proportional(18.0),
+        Color32::BLACK,
+    );
+}
+
+fn rank_char(rank: u8) -> char {
+    const RANK_CHARS: [char; 14] = [
+        '-', 'A', '2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K',
+    ];
+    RANK_CHARS[rank as usize]
+}
+
+/// The `(seed, actions)` replay proof issues #5/#6 ask for, adapted for the
+/// GUI status area: replaying the action log from the original seed must
+/// reproduce the exact current game.
+fn replay_summary(app: &FreecellApp) -> String {
+    let actions = app.log.borrow();
+    match replay(app.original_seed, &actions) {
+        Ok(rebuilt) if &rebuilt == app.store.game() => {
+            "Replay verified: (seed, actions) reproduces this win.".to_string()
+        }
+        Ok(_) => "Replay produced a different game (this is a bug).".to_string(),
+        Err(e) => format!("Replay failed: {e} (this is a bug)."),
     }
 }
 
 impl eframe::App for FreecellApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        ui.heading("DaveB's Freecell — GUI scaffold (issue #8)");
-        ui.label(format!("Deal #{}", self.store.game().seed().unwrap_or(0)));
-        ui.label(format!(
-            "Moves played: {}",
-            self.store.game().moves_played()
-        ));
-        ui.label("Card rendering and move input land in issue #8.");
+        egui::CentralPanel::default().show(ui, |ui| {
+            self.draw_toolbar(ui);
+            ui.separator();
+            self.draw_status(ui);
+            ui.separator();
+            self.draw_board(ui);
+        });
     }
 }
 
 fn main() -> eframe::Result<()> {
-    let options = eframe::NativeOptions::default();
+    let seed = std::env::args()
+        .nth(1)
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or_else(random_seed);
+
+    let options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default().with_inner_size([880.0, 760.0]),
+        ..Default::default()
+    };
     eframe::run_native(
         "DaveB's Freecell",
         options,
-        Box::new(|_cc| Ok(Box::new(FreecellApp::default()))),
+        Box::new(move |_cc| Ok(Box::new(FreecellApp::new(seed)))),
     )
 }
