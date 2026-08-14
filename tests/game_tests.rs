@@ -533,6 +533,180 @@ fn replay_with_no_actions_is_just_the_bare_deal() {
     assert_eq!(rebuilt, Game::deal(11982));
 }
 
+// ---------------------------------------------------------------- can_move / movable_run_len
+
+#[test]
+fn can_move_reports_success_without_mutating_the_receiver() {
+    let game = Game::from_parts(
+        [
+            cascade(&["KC", "7H"]),
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+        ],
+        [None, None, None, None],
+        [0, 0, 0, 0],
+    );
+    let before = game.state().clone();
+    let result = game.state().can_move(Loc::Cascade(0), Loc::Free(1));
+    assert_eq!(result, Ok(1));
+    assert_eq!(game.state(), &before, "can_move must not mutate the state");
+}
+
+#[test]
+fn can_move_agrees_with_do_move_on_illegal_moves() {
+    let mut game = Game::from_parts(
+        [
+            cascade(&["KC", "7H"]),
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+        ],
+        [Some(c("2C")), None, None, None],
+        [0, 0, 0, 0],
+    );
+    let via_can_move = game.state().can_move(Loc::Cascade(0), Loc::Free(0));
+    let via_do_move = game.do_move(Loc::Cascade(0), Loc::Free(0));
+    assert_eq!(via_can_move, via_do_move);
+    assert_eq!(via_can_move, Err(freecell::MoveError::OccupiedFreeCell));
+}
+
+#[test]
+fn can_move_agrees_with_do_move_on_supermove_counts() {
+    let game = Game::from_parts(
+        [
+            cascade(&["KC", "9H", "8S", "7D"]),
+            cascade(&["TS"]),
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+        ],
+        [None, None, None, None],
+        [0, 0, 0, 0],
+    );
+    assert_eq!(
+        game.state().can_move(Loc::Cascade(0), Loc::Cascade(1)),
+        Ok(3)
+    );
+}
+
+#[test]
+fn movable_run_len_is_zero_for_an_empty_cascade() {
+    let game = Game::deal(1);
+    let empty = Game::from_parts(
+        [
+            vec![],
+            game.cascades()[1].clone(),
+            game.cascades()[2].clone(),
+            game.cascades()[3].clone(),
+            game.cascades()[4].clone(),
+            game.cascades()[5].clone(),
+            game.cascades()[6].clone(),
+            game.cascades()[7].clone(),
+        ],
+        [None, None, None, None],
+        [0, 0, 0, 0],
+    );
+    assert_eq!(empty.state().movable_run_len(Loc::Cascade(0)), 0);
+}
+
+#[test]
+fn movable_run_len_is_one_for_a_single_card() {
+    let game = Game::from_parts(
+        [
+            cascade(&["KC"]),
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+        ],
+        [None, None, None, None],
+        [0, 0, 0, 0],
+    );
+    assert_eq!(game.state().movable_run_len(Loc::Cascade(0)), 1);
+}
+
+#[test]
+fn movable_run_len_finds_the_full_ordered_alternating_run() {
+    // 9H-8S-7D is an ordered alternating run; KC breaks it.
+    let game = Game::from_parts(
+        [
+            cascade(&["KC", "9H", "8S", "7D"]),
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+        ],
+        [None, None, None, None],
+        [0, 0, 0, 0],
+    );
+    assert_eq!(game.state().movable_run_len(Loc::Cascade(0)), 3);
+}
+
+#[test]
+fn movable_run_len_stops_at_the_first_break_in_the_run() {
+    // 8S-7H at the tail is a valid ordered pair, but 8H-8S is not (same
+    // rank), so the run stops at 2 instead of reaching all 3 cards.
+    let game = Game::from_parts(
+        [
+            cascade(&["8H", "8S", "7H"]),
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+        ],
+        [None, None, None, None],
+        [0, 0, 0, 0],
+    );
+    assert_eq!(game.state().movable_run_len(Loc::Cascade(0)), 2);
+}
+
+#[test]
+fn movable_run_len_for_free_cells_is_one_if_occupied_else_zero() {
+    let game = Game::from_parts(
+        [
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+        ],
+        [Some(c("KC")), None, None, None],
+        [0, 0, 0, 0],
+    );
+    assert_eq!(game.state().movable_run_len(Loc::Free(0)), 1);
+    assert_eq!(game.state().movable_run_len(Loc::Free(1)), 0);
+}
+
+#[test]
+fn movable_run_len_for_foundation_is_always_zero() {
+    let game = Game::deal(1);
+    assert_eq!(game.state().movable_run_len(Loc::Foundation), 0);
+}
+
 // ---------------------------------------------------------------- parse_move
 
 #[test]

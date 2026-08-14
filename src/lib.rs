@@ -206,6 +206,34 @@ impl GameState {
         self.foundations.iter().all(|&r| r == 13)
     }
 
+    /// Non-mutating dry run of [`GameState::do_move`]: reports whether `from
+    /// -> to` would succeed, and how many cards would move, without
+    /// changing `self`. This is the single source of truth for move
+    /// legality that UIs (e.g. the TUI's legal-destination dimming, issue
+    /// #7) should query instead of reimplementing any rule -- it is
+    /// implemented purely in terms of `do_move` on a throwaway clone, so
+    /// there is exactly one place the actual rules live.
+    pub fn can_move(&self, from: Loc, to: Loc) -> Result<usize, MoveError> {
+        self.clone().do_move(from, to)
+    }
+
+    /// How many trailing cards at `loc` would move together if `loc` were
+    /// chosen as a move source, independent of any destination (i.e.
+    /// ignoring destination-specific capacity/matching limits that
+    /// `do_move`/`can_move` additionally enforce). Used for highlighting
+    /// the selected run in a UI: `Loc::Cascade` returns the longest
+    /// ordered, alternating-color run at that column's tail (0 if empty or
+    /// out of range); `Loc::Free` returns 1 if occupied else 0;
+    /// `Loc::Foundation` is always 0, since a foundation is never a valid
+    /// move source.
+    pub fn movable_run_len(&self, loc: Loc) -> usize {
+        match loc {
+            Loc::Cascade(i) => self.cascades.get(i).map_or(0, |c| tail_run_len(c)),
+            Loc::Free(i) => usize::from(self.freecells.get(i).is_some_and(Option::is_some)),
+            Loc::Foundation => 0,
+        }
+    }
+
     /// Perform a move, returning the number of cards moved.
     ///
     /// Cascade-to-cascade moves transfer the longest ordered run that legally
@@ -269,18 +297,7 @@ impl GameState {
             return Err(MoveError::EmptySource);
         }
 
-        // Longest ordered (descending, alternating-color) run at the tail.
-        let mut run_len = 1;
-        while run_len < source.len() {
-            let upper = &source[source.len() - run_len - 1];
-            let lower = &source[source.len() - run_len];
-            if lower.stacks_on(upper) {
-                run_len += 1;
-            } else {
-                break;
-            }
-        }
-
+        let run_len = tail_run_len(source);
         let dest_top = self.cascades[dst].last().copied();
         // How many cards must move: onto a card, exactly the sub-run that
         // fits it; onto an empty column, as much of the run as capacity allows.
@@ -344,6 +361,30 @@ impl GameState {
             _ => Err(MoveError::InvalidLocation),
         }
     }
+}
+
+/// The longest ordered (descending, alternating-color) run at the tail of a
+/// cascade column, i.e. how many cards would move together in a
+/// cascade-to-cascade move before capacity/destination-matching limits are
+/// applied. Shared by [`GameState::move_run`] (which additionally enforces
+/// those limits) and [`GameState::movable_run_len`] (which reports it
+/// as-is, for UI highlighting) so the run-detection rule itself has one
+/// implementation. Returns 0 for an empty slice, 1 for a single card.
+fn tail_run_len(cascade: &[Card]) -> usize {
+    let mut run_len = match cascade.len() {
+        0 => return 0,
+        _ => 1,
+    };
+    while run_len < cascade.len() {
+        let upper = &cascade[cascade.len() - run_len - 1];
+        let lower = &cascade[cascade.len() - run_len];
+        if lower.stacks_on(upper) {
+            run_len += 1;
+        } else {
+            break;
+        }
+    }
+    run_len
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

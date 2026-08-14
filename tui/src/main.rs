@@ -1,10 +1,16 @@
-//! ratatui terminal UI for DaveB's Freecell (issue #6).
+//! ratatui terminal UI for DaveB's Freecell (issues #6 and #7).
 //!
-//! Board rendering (`board` module plus this file's draw calls) is a pure
-//! function of [`freecell::GameState`] -- no UI-only state (selection,
-//! input buffer, messages) affects what a card looks like or where it sits.
-//! Selection *highlighting* and legal-move dimming are issue #7, not this
-//! file: clicking or typing a location here just tracks/dispatches moves.
+//! Board rendering (`board` module plus this file's draw calls) reads
+//! [`freecell::GameState`] directly every frame; the only UI-only state
+//! that feeds into it is `App::selected` (issue #7), which drives the
+//! selected-run highlight and legal-destination dimming and nothing else --
+//! the keyboard input buffer, status messages, and help visibility never
+//! affect what a card looks like or where it sits.
+//!
+//! Legal-destination dimming and the selected-run highlight (issue #7) are
+//! computed by asking [`freecell::GameState::can_move`] and
+//! [`freecell::GameState::movable_run_len`] -- the engine's own move
+//! validation -- rather than reimplementing any move rule here.
 //!
 //! Keyboard input reuses the exact same command grammar as the text CLI
 //! (`src/main.rs`): type a command, press Enter. Mouse input is additive:
@@ -173,8 +179,9 @@ impl App {
         }
     }
 
-    /// Click-to-select-then-click-to-move mouse handling. No highlighting
-    /// of the selection or legal destinations here -- that's issue #7.
+    /// Click-to-select-then-click-to-move mouse handling. Highlighting the
+    /// selection and dimming illegal destinations (issue #7) happens in
+    /// `draw_board`, driven by the `selected` field this sets.
     fn handle_click(&mut self, board_area: Rect, x: u16, y: u16) {
         let layout = board::layout(board_area);
         let Some(loc) = board::hit_test(&layout, x, y) else {
@@ -282,15 +289,49 @@ fn draw_status(frame: &mut ratatui::Frame, area: Rect, app: &App) {
     frame.render_widget(Paragraph::new(text), area);
 }
 
-fn card_span(card: freecell::Card) -> Span<'static> {
-    let style = match board::card_color(card) {
+fn card_span(card: freecell::Card, highlighted: bool) -> Span<'static> {
+    let mut style = match board::card_color(card) {
         board::CardColor::Red => Style::default().fg(Color::Red),
         // Leave the foreground unset so the terminal's own default applies,
         // matching `CardColor::Black`'s documented intent -- hard-coding
         // white here would be unreadable on a light-background terminal.
         board::CardColor::Black => Style::default(),
     };
+    if highlighted {
+        // Invert fg/bg rather than introducing a new color, so the
+        // selected run reads clearly under any terminal color theme.
+        style = style.add_modifier(Modifier::REVERSED);
+    }
     Span::styled(format!("{card} "), style)
+}
+
+/// How a board slot's border should render, given the current selection.
+/// `Illegal` is only ever produced for a slot other than the selected one
+/// (see `slot_style`) -- the selected slot is always `Selected`, never run
+/// through the legality check.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SlotStyle {
+    Selected,
+    Illegal,
+    Normal,
+}
+
+/// Classify a candidate destination `loc` relative to `app.selected`, using
+/// [`freecell::GameState::can_move`] as the single source of truth for
+/// legality (issue #7) -- this function never reimplements a move rule.
+/// Always `Normal` when nothing is selected.
+fn slot_style(app: &App, loc: Loc) -> SlotStyle {
+    match app.selected {
+        Some(selected) if selected == loc => SlotStyle::Selected,
+        Some(selected) => {
+            if app.store.state().can_move(selected, loc).is_ok() {
+                SlotStyle::Normal
+            } else {
+                SlotStyle::Illegal
+            }
+        }
+        None => SlotStyle::Normal,
+    }
 }
 
 fn draw_board(frame: &mut ratatui::Frame, area: Rect, app: &App) {
@@ -298,16 +339,16 @@ fn draw_board(frame: &mut ratatui::Frame, area: Rect, app: &App) {
     let state = app.store.state();
 
     for (i, &rect) in layout.free_cells.iter().enumerate() {
-        let selected = app.selected == Some(Loc::Free(i));
+        let slot = slot_style(app, Loc::Free(i));
         let title = format!("{}", (b'a' + i as u8) as char);
         let content: Line = match state.freecells()[i] {
-            Some(card) => Line::from(vec![card_span(card)]),
+            Some(card) => Line::from(vec![card_span(card, false)]),
             None => Line::from("--"),
         };
         let block = Block::default()
             .title(title)
             .borders(Borders::ALL)
-            .border_style(border_style(selected));
+            .border_style(border_style(slot));
         frame.render_widget(Paragraph::new(content).block(block), rect);
     }
 
@@ -316,7 +357,10 @@ fn draw_board(frame: &mut ratatui::Frame, area: Rect, app: &App) {
             .direction(Direction::Horizontal)
             .constraints([Constraint::Ratio(1, 4); 4])
             .split(layout.foundations);
-        let selected = app.selected == Some(Loc::Foundation);
+        // Foundations are addressed collectively (`Loc::Foundation` alone
+        // picks the pile by suit), so every displayed pile shares one
+        // legality classification rather than four independent ones.
+        let slot = slot_style(app, Loc::Foundation);
         for (i, &rect) in sub.iter().enumerate() {
             let rank = state.foundations()[i];
             let suit_char = ['C', 'D', 'H', 'S'][i];
@@ -327,18 +371,26 @@ fn draw_board(frame: &mut ratatui::Frame, area: Rect, app: &App) {
             };
             let block = Block::default()
                 .borders(Borders::ALL)
-                .border_style(border_style(selected));
+                .border_style(border_style(slot));
             frame.render_widget(Paragraph::new(content).block(block), rect);
         }
     }
 
     for (i, &rect) in layout.cascades.iter().enumerate() {
-        let selected = app.selected == Some(Loc::Cascade(i));
-        let lines = cascade_lines(&state.cascades()[i], rect);
+        let loc = Loc::Cascade(i);
+        let slot = slot_style(app, loc);
+        // Only the selected cascade highlights its movable tail run; every
+        // other cascade highlights nothing.
+        let run_len = if app.selected == Some(loc) {
+            state.movable_run_len(loc)
+        } else {
+            0
+        };
+        let lines = cascade_lines(&state.cascades()[i], rect, run_len);
         let block = Block::default()
             .title(format!("{}", i + 1))
             .borders(Borders::ALL)
-            .border_style(border_style(selected));
+            .border_style(border_style(slot));
         frame.render_widget(Paragraph::new(lines).block(block), rect);
     }
 }
@@ -347,21 +399,33 @@ fn draw_board(frame: &mut ratatui::Frame, area: Rect, app: &App) {
 /// from the top (with a "+N more" indicator) rather than the bottom when it
 /// doesn't fit: the bottom (frontmost) card is the only one that can ever be
 /// moved, so it must stay visible even when the column is deep.
-fn cascade_lines(cascade: &[freecell::Card], rect: Rect) -> Vec<Line<'static>> {
+///
+/// `run_len` (0 unless this cascade is the current selection) highlights
+/// the trailing `run_len` cards -- the movable run [`freecell::GameState::
+/// movable_run_len`] reports for this column. Since truncation always keeps
+/// the tail visible, the highlighted run stays visible together with any
+/// "+N more" indicator (a run deeper than the visible area is the same
+/// pre-existing edge case truncation already accepts).
+fn cascade_lines(cascade: &[freecell::Card], rect: Rect, run_len: usize) -> Vec<Line<'static>> {
     let available_rows = rect.height.saturating_sub(2) as usize; // minus borders
     if cascade.is_empty() || available_rows == 0 {
         return Vec::new();
     }
+    // A card at absolute index `i` (0-based from the top of the column) is
+    // part of the highlighted run when it's within the last `run_len` cards.
+    let is_highlighted = |i: usize| cascade.len() - i <= run_len;
     if cascade.len() <= available_rows {
         return cascade
             .iter()
-            .map(|&card| Line::from(vec![card_span(card)]))
+            .enumerate()
+            .map(|(i, &card)| Line::from(vec![card_span(card, is_highlighted(i))]))
             .collect();
     }
     if available_rows == 1 {
         // No room for both an indicator and a card: prioritize the playable
         // bottom card.
-        return vec![Line::from(vec![card_span(*cascade.last().unwrap())])];
+        let i = cascade.len() - 1;
+        return vec![Line::from(vec![card_span(cascade[i], is_highlighted(i))])];
     }
     let visible = available_rows - 1;
     let hidden = cascade.len() - visible;
@@ -369,18 +433,24 @@ fn cascade_lines(cascade: &[freecell::Card], rect: Rect) -> Vec<Line<'static>> {
     lines.extend(
         cascade[cascade.len() - visible..]
             .iter()
-            .map(|&card| Line::from(vec![card_span(card)])),
+            .enumerate()
+            .map(|(offset, &card)| {
+                let i = hidden + offset;
+                Line::from(vec![card_span(card, is_highlighted(i))])
+            }),
     );
     lines
 }
 
-fn border_style(selected: bool) -> Style {
-    if selected {
-        Style::default()
+fn border_style(slot: SlotStyle) -> Style {
+    match slot {
+        SlotStyle::Selected => Style::default()
             .fg(Color::Yellow)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default()
+            .add_modifier(Modifier::BOLD),
+        SlotStyle::Illegal => Style::default()
+            .fg(Color::DarkGray)
+            .add_modifier(Modifier::DIM),
+        SlotStyle::Normal => Style::default(),
     }
 }
 
