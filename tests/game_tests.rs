@@ -8,7 +8,7 @@
 //! - `Game::do_move(from, to)` — validated moves incl. multi-card supermoves
 //! - `Game::undo()`, `Game::is_won()`
 
-use freecell::{replay, Action, Card, Game, Loc, Suit};
+use freecell::{parse_move, replay, Action, Card, Game, Loc, Suit};
 
 /// Parse "JD" / "TC" / "AS" style shorthand into a Card.
 fn c(s: &str) -> Card {
@@ -531,4 +531,53 @@ fn replay_reconstructs_the_exact_same_game_as_playing_it_live() {
 fn replay_with_no_actions_is_just_the_bare_deal() {
     let rebuilt = replay(11982, &[]).expect("empty replay always succeeds");
     assert_eq!(rebuilt, Game::deal(11982));
+}
+
+// ---------------------------------------------------------------- parse_move
+
+#[test]
+fn parse_move_reads_cascade_to_cascade() {
+    assert_eq!(parse_move("35"), Some((Loc::Cascade(2), Loc::Cascade(4))));
+}
+
+#[test]
+fn parse_move_reads_cascade_to_free_cell() {
+    assert_eq!(parse_move("1a"), Some((Loc::Cascade(0), Loc::Free(0))));
+}
+
+#[test]
+fn parse_move_reads_free_cell_to_cascade() {
+    assert_eq!(parse_move("b4"), Some((Loc::Free(1), Loc::Cascade(3))));
+}
+
+#[test]
+fn parse_move_reads_cascade_to_foundation_with_h_or_f() {
+    assert_eq!(parse_move("2h"), Some((Loc::Cascade(1), Loc::Foundation)));
+    assert_eq!(parse_move("2f"), Some((Loc::Cascade(1), Loc::Foundation)));
+}
+
+#[test]
+fn parse_move_rejects_foundation_as_a_source() {
+    assert_eq!(parse_move("h1"), None);
+    assert_eq!(parse_move("f1"), None);
+}
+
+#[test]
+fn parse_move_ignores_surrounding_and_internal_whitespace() {
+    assert_eq!(parse_move(" 1a "), Some((Loc::Cascade(0), Loc::Free(0))));
+    assert_eq!(parse_move("1 a"), Some((Loc::Cascade(0), Loc::Free(0))));
+}
+
+#[test]
+fn parse_move_rejects_unrecognized_characters() {
+    assert_eq!(parse_move("1z"), None);
+    assert_eq!(parse_move("z1"), None);
+    assert_eq!(parse_move("9a"), None); // cascades only go up to 8
+}
+
+#[test]
+fn parse_move_rejects_missing_or_extra_characters() {
+    assert_eq!(parse_move("1"), None);
+    assert_eq!(parse_move(""), None);
+    assert_eq!(parse_move("1a5"), None);
 }

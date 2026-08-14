@@ -1,4 +1,4 @@
-use freecell::{replay, Action, Game, Loc, Store};
+use freecell::{parse_move, replay, Action, Game, Store};
 use std::io::{self, BufRead, Write};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -131,31 +131,6 @@ fn random_seed() -> u32 {
         .unwrap_or(1);
     // Classic deals are numbered 1..=32000.
     nanos % 32000 + 1
-}
-
-/// Commands are two location characters: 1-8 cascades, a-d free cells,
-/// h (or f) the foundations. E.g. "1a", "35", "ah", "2h".
-fn parse_move(cmd: &str) -> Option<(Loc, Loc)> {
-    let mut chars = cmd.chars().filter(|c| !c.is_whitespace());
-    let from = parse_loc(chars.next()?)?;
-    let to = parse_loc(chars.next()?)?;
-    if chars.next().is_some() {
-        return None;
-    }
-    // Foundations are never a source.
-    if from == Loc::Foundation {
-        return None;
-    }
-    Some((from, to))
-}
-
-fn parse_loc(c: char) -> Option<Loc> {
-    match c {
-        '1'..='8' => Some(Loc::Cascade(c as usize - '1' as usize)),
-        'a'..='d' => Some(Loc::Free(c as usize - 'a' as usize)),
-        'h' | 'f' => Some(Loc::Foundation),
-        _ => None,
-    }
 }
 
 fn render(store: &Store) {
