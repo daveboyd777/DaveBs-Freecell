@@ -99,7 +99,7 @@ cargo test --workspace      # tests, whole workspace (incl. tui/gui once they ha
 
 Project layout (a Cargo workspace):
 
-```
+```text
 Cargo.toml            workspace root + the freecell package (engine + text CLI)
 src/lib.rs            game engine (no I/O)
 src/store.rs          Store: dispatches Action, notifies subscribers
