@@ -106,6 +106,17 @@ architecture better.
 
 **Steps:**
 
+0. Workspace scaffolding — done. The repo is now a Cargo workspace: `freecell`
+   (root package: engine + text CLI, unchanged) plus two new member crates,
+   `tui/` (`freecell-tui`: ratatui + crossterm) and `gui/` (`freecell-gui`:
+   egui + eframe). Kept separate from `freecell` because their dependency
+   graphs don't coexist in one crate — `crossterm` doesn't target
+   `wasm32-unknown-unknown` (needed by step 4), and neither UI toolkit
+   belongs in the pure engine's own dependency tree. Each currently holds
+   only a minimal placeholder `main.rs` (constructs a real `Store`, renders a
+   placeholder screen) proving the wiring; CI's `check` job now runs
+   `--workspace` so both stay green as they grow. Actual card rendering and
+   input land in steps 1–4.
 1. ratatui front-end as a store subscriber (keyboard + mouse)
 2. Card rendering with color, selection highlights, and legal-move hints
 3. egui/eframe desktop app sharing the same store
