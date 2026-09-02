@@ -7,7 +7,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 fn main() {
     if std::env::args().nth(1).as_deref() == Some("stats") {
-        return print_stats();
+        return if std::env::args().nth(2).as_deref() == Some("--json") {
+            print_stats_json()
+        } else {
+            print_stats()
+        };
     }
 
     let original_seed = std::env::args()
@@ -262,12 +266,11 @@ fn random_seed() -> u32 {
 }
 
 /// `freecell stats`: print the persisted classic FreeCell statistics and
-/// exit, without starting the game loop (issue #11). A versioned
-/// `--json` export is issue #19's job; this is plain text only.
+/// exit, without starting the game loop (issue #11). Plain text only;
+/// `stats --json` (below) is the versioned machine-readable export
+/// (issue #19).
 fn print_stats() {
-    let stats = freecell::stats::default_stats_path()
-        .map(|path| Stats::load_or_default(&path))
-        .unwrap_or_default();
+    let stats = load_persisted_stats();
 
     println!("Games played: {}", stats.games_played());
     println!("Games won:    {}", stats.games_won());
@@ -279,6 +282,26 @@ fn print_stats() {
     );
     println!("Longest winning streak: {}", stats.longest_winning_streak());
     println!("Longest losing streak:  {}", stats.longest_losing_streak());
+}
+
+/// `freecell stats --json` (issue #19): print the persisted stats as the
+/// versioned `freecell::stats::StatsExport` JSON schema and exit. This is
+/// the hinge point for external renderers (in-app charts, issue #14; the
+/// web dashboard, issue #20) -- everything is computed here in Rust, in
+/// the tested `stats` module; a consumer of this output only ever renders
+/// it.
+fn print_stats_json() {
+    let export = freecell::stats::StatsExport::from_stats(&load_persisted_stats());
+    match export.to_json() {
+        Ok(json) => println!("{json}"),
+        Err(e) => eprintln!("Failed to serialize stats: {e}"),
+    }
+}
+
+fn load_persisted_stats() -> Stats {
+    freecell::stats::default_stats_path()
+        .map(|path| Stats::load_or_default(&path))
+        .unwrap_or_default()
 }
 
 fn describe_streak(streak: freecell::stats::Streak) -> String {
