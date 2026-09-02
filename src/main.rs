@@ -1,8 +1,7 @@
 use freecell::stats::{Stats, StatsRecorder};
 use freecell::{parse_move, replay, Action, Game, Store};
-use std::cell::RefCell;
 use std::io::{self, BufRead, Write};
-use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn main() {
@@ -27,21 +26,46 @@ fn main() {
     // Store subscriber that records every finished game to the OS data
     // directory (issue #11). Shared across all three UIs via
     // `freecell::stats::StatsRecorder`, so play in the CLI, TUI, or GUI all
-    // contribute to the same persisted history.
+    // contribute to the same persisted history. `Arc<Mutex<_>>` rather than
+    // the other UIs' `Rc<RefCell<_>>`: the Ctrl+C handler below runs on a
+    // separate thread (`ctrlc`'s), which requires `Send`.
     let stats_path = freecell::stats::default_stats_path();
     let stats = stats_path
         .as_deref()
         .map(Stats::load_or_default)
         .unwrap_or_default();
-    let recorder = Rc::new(RefCell::new(StatsRecorder::new(
+    let recorder = Arc::new(Mutex::new(StatsRecorder::new(
         original_seed,
         stats,
         stats_path,
     )));
-    let recorder_for_subscriber = Rc::clone(&recorder);
+    let recorder_for_subscriber = Arc::clone(&recorder);
     store.subscribe(move |state, action| {
-        recorder_for_subscriber.borrow_mut().observe(state, action);
+        recorder_for_subscriber
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .observe(state, action);
     });
+
+    // Closes the quit-detection gap `observe` alone leaves: pressing
+    // Ctrl+C recorded nothing before, since it never dispatches a
+    // `Deal`/`Restart` for `observe` to trigger on. `ctrlc` runs this
+    // closure on its own dedicated thread once, then this process exits;
+    // `StatsRecorder::finalize_on_exit` is the idempotent "record the
+    // in-progress attempt as a loss if it's genuine" call also used after
+    // the main loop below, so a Ctrl+C that races with a normal quit can
+    // never double-record.
+    let recorder_for_signal = Arc::clone(&recorder);
+    if let Err(e) = ctrlc::set_handler(move || {
+        recorder_for_signal
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .finalize_on_exit();
+        println!("\nInterrupted.");
+        std::process::exit(0);
+    }) {
+        eprintln!("Warning: failed to install Ctrl+C handler: {e}");
+    }
 
     println!("FreeCell - type ? for help");
     loop {
@@ -116,6 +140,13 @@ fn main() {
             None => println!("Unrecognized command '{line}' — type ? for help."),
         }
     }
+
+    // Every break above (an explicit quit command or EOF) reaches here;
+    // idempotent with the Ctrl+C handler's own call to the same method.
+    recorder
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .finalize_on_exit();
 }
 
 /// Dispatch `action` through the store; on success, append it to the replay

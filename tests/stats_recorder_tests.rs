@@ -157,6 +157,107 @@ fn restart_records_a_loss_for_the_same_seed_and_starts_a_fresh_attempt() {
 }
 
 #[test]
+fn finalize_on_exit_records_a_loss_for_a_genuine_unfinished_attempt() {
+    let game = Game::from_parts(
+        [
+            cascade(&["KC", "7H"]),
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+        ],
+        [None; 4],
+        [0; 4],
+    );
+    let (mut store, recorder) = store_with_recorder(game, 99);
+
+    store
+        .dispatch(Action::Move {
+            from: Loc::Cascade(0),
+            to: Loc::Free(0),
+        })
+        .expect("legal move");
+
+    // Simulates a UI's shutdown path -- a quit command, Ctrl+C, or a
+    // window close -- none of which dispatch a Deal/Restart for `observe`
+    // to react to.
+    recorder.borrow_mut().finalize_on_exit();
+
+    let stats = recorder.borrow().stats().clone();
+    assert_eq!(
+        stats.deal_history(99),
+        vec![&GameResult {
+            seed: 99,
+            won: false,
+            moves: 1
+        }]
+    );
+}
+
+#[test]
+fn finalize_on_exit_is_idempotent() {
+    let game = Game::from_parts(
+        [
+            cascade(&["KC", "7H"]),
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+        ],
+        [None; 4],
+        [0; 4],
+    );
+    let (mut store, recorder) = store_with_recorder(game, 99);
+
+    store
+        .dispatch(Action::Move {
+            from: Loc::Cascade(0),
+            to: Loc::Free(0),
+        })
+        .expect("legal move");
+
+    // Two shutdown paths racing (e.g. a signal handler and a fallback
+    // after the main loop returns) must not double-record the same loss.
+    recorder.borrow_mut().finalize_on_exit();
+    recorder.borrow_mut().finalize_on_exit();
+
+    assert_eq!(recorder.borrow().stats().games_played(), 1);
+}
+
+#[test]
+fn finalize_on_exit_does_not_override_an_already_recorded_win() {
+    let game = Game::from_parts(
+        Default::default(),
+        [Some(c("KS")), None, None, None],
+        [13, 13, 13, 12],
+    );
+    let (mut store, recorder) = store_with_recorder(game, 42);
+
+    store
+        .dispatch(Action::Move {
+            from: Loc::Free(0),
+            to: Loc::Foundation,
+        })
+        .expect("legal move");
+    assert!(store.state().is_won());
+
+    // A UI that finalizes on exit even after a win (e.g. the player won,
+    // then quit without starting a new game) must not add a second,
+    // contradictory record for the same attempt.
+    recorder.borrow_mut().finalize_on_exit();
+
+    let stats = recorder.borrow().stats().clone();
+    assert_eq!(stats.games_played(), 1);
+    assert_eq!(stats.games_won(), 1);
+}
+
+#[test]
 fn autoplay_counts_every_card_it_sends_home_as_moves() {
     // AC and AH sit on top; autoplay should send both home in one dispatch.
     let game = Game::from_parts(

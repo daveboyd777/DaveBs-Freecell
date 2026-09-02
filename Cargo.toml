@@ -30,3 +30,11 @@ serde_json = "1"
 # The OS-appropriate data directory Stats::save/load defaults to (issue
 # #11). Same major version eframe already pulls in as a dev-dependency.
 directories = "6.0"
+
+# Only used by src/main.rs's Ctrl+C handler (issue #11's quit-detection
+# gap: recording a loss when the CLI is interrupted, not just when a new
+# deal/restart is dispatched). Excluded from wasm32: `gui` links against
+# this crate's *library* target for its own WASM build (issue #9), and
+# ctrlc's signal-handling backends don't target wasm32-unknown-unknown.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+ctrlc = "3"

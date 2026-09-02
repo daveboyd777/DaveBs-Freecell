@@ -7,6 +7,11 @@
 //! out of it, each with its own issue: wiring a `Store` subscriber to
 //! record every finished game live and persisting `Stats` to disk (#11),
 //! and the versioned `freecell stats --json` CLI export (#19).
+//!
+//! [`StatsRecorder`] additionally exposes `finalize_on_exit`, which each
+//! UI calls from its shutdown path (a quit command, Ctrl+C, or a window
+//! close) so abandoning a game by quitting outright -- not just by
+//! starting a new deal or restarting -- is recorded as a loss too.
 
 use crate::{Action, GameState};
 use serde::{Deserialize, Serialize};
@@ -165,12 +170,10 @@ pub fn default_stats_path() -> Option<PathBuf> {
 /// which changes by exactly one per `Move`/`Undo`/`Redo`, and by the
 /// foundation-count delta per `AutoPlay`).
 ///
-/// **Scope note:** a loss is recorded when a deal with at least one move
-/// played is abandoned via `Action::Deal` or `Action::Restart` before it's
-/// won. Quitting a UI entirely without dispatching a new deal/restart is
-/// *not* recorded as a loss in this version -- that would need an explicit
-/// finalize call wired into each UI's shutdown path, which is left as a
-/// follow-up rather than bundled into this issue.
+/// A loss is recorded either when a deal with at least one move played is
+/// abandoned via `Action::Deal`/`Action::Restart` (via `observe`), or when
+/// the process exits mid-game (via `finalize_on_exit`, which each UI calls
+/// from its own shutdown path -- see that method's docs).
 pub struct StatsRecorder {
     stats: Stats,
     path: Option<PathBuf>,
@@ -239,12 +242,33 @@ impl StatsRecorder {
 
     /// Record the in-progress attempt as a loss, if it's a genuine attempt
     /// (at least one move played) that hasn't already been recorded as a
-    /// win. Called when a `Deal`/`Restart` leaves it behind.
+    /// win. Called when a `Deal`/`Restart` leaves it behind, so `recorded`
+    /// resets afterward regardless -- a new attempt is about to begin.
     fn finalize_abandoned_attempt(&mut self) {
         if !self.recorded && self.moves > 0 {
             self.record(false);
         }
         self.recorded = false;
+    }
+
+    /// Record the in-progress attempt as a loss, if it's a genuine attempt
+    /// (at least one move played) that hasn't already been recorded as a
+    /// win, and persist immediately.
+    ///
+    /// Call this once from each UI's shutdown path -- a quit command,
+    /// Ctrl+C, or a window close -- so abandoning a game by quitting
+    /// outright is recorded as a loss too, the same as abandoning it via a
+    /// new deal or restart already is via `observe`. Unlike
+    /// `finalize_abandoned_attempt`, this does *not* reset `recorded`
+    /// afterward: the process is exiting, there is no next attempt to
+    /// track, and leaving `recorded` set makes a second call -- e.g. if a
+    /// UI calls this from both a signal handler and a fallback after its
+    /// event loop returns -- a safe no-op instead of double-recording the
+    /// same result.
+    pub fn finalize_on_exit(&mut self) {
+        if !self.recorded && self.moves > 0 {
+            self.record(false);
+        }
     }
 
     fn record(&mut self, won: bool) {

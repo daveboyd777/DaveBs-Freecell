@@ -72,6 +72,12 @@ struct FreecellApp {
     selected: Option<Loc>,
     status: Option<String>,
     seed_input: String,
+    /// Store subscriber that records every finished game (issue #11),
+    /// shared with the CLI and TUI via `freecell::stats::StatsRecorder`.
+    /// Kept as a field (rather than only captured by the subscriber
+    /// closure in `FreecellApp::new`) so `eframe::App::on_exit` can call
+    /// `StatsRecorder::finalize_on_exit` when the window closes.
+    stats: Rc<RefCell<StatsRecorder>>,
 }
 
 impl FreecellApp {
@@ -95,13 +101,16 @@ impl FreecellApp {
         // browser sandbox -- so stats are still tracked in-memory for the
         // session but nothing persists across page reloads.
         let stats_path = freecell::stats::default_stats_path();
-        let stats = stats_path
+        let persisted = stats_path
             .as_deref()
             .map(Stats::load_or_default)
             .unwrap_or_default();
-        let recorder = Rc::new(RefCell::new(StatsRecorder::new(seed, stats, stats_path)));
+        let stats = Rc::new(RefCell::new(StatsRecorder::new(
+            seed, persisted, stats_path,
+        )));
+        let stats_for_subscriber = Rc::clone(&stats);
         store.subscribe(move |state, action| {
-            recorder.borrow_mut().observe(state, action);
+            stats_for_subscriber.borrow_mut().observe(state, action);
         });
 
         Self {
@@ -112,6 +121,7 @@ impl FreecellApp {
             selected: None,
             status: None,
             seed_input: String::new(),
+            stats,
         }
     }
 
@@ -541,6 +551,15 @@ impl eframe::App for FreecellApp {
             ui.separator();
             self.draw_board(ui);
         });
+    }
+
+    /// Closes issue #11's quit-detection gap for the GUI: record the
+    /// in-progress game as a loss, if it's a genuine unfinished attempt,
+    /// when the window closes. `eframe`'s `glow` feature is off (this
+    /// crate's default `wgpu` renderer is used instead), so `App::on_exit`
+    /// takes no `glow::Context` argument here.
+    fn on_exit(&mut self) {
+        self.stats.borrow_mut().finalize_on_exit();
     }
 }
 
