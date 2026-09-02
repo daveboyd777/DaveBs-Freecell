@@ -56,8 +56,39 @@ pub fn solve(state: &GameState) -> Solvability {
 }
 
 /// Determine whether `state` can still be won.
+///
+/// `dfs` is recursive, with one stack frame per move currently on the
+/// path, and a long unbroken chain of moves before the first backtrack can
+/// run deep enough to overflow a platform's default stack (observed in
+/// practice on Windows' comparatively small 1 MiB default while tuning
+/// issue #13's smaller interactive search budget). On native targets this
+/// runs the search on a dedicated thread with a generous stack as a cheap
+/// extra safety margin; [`MAX_SEARCH_DEPTH`] bounds recursion depth
+/// directly and unconditionally either way.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn solve_with_config(state: &GameState, config: SolverConfig) -> Solvability {
-    let mut state = state.clone();
+    let state = state.clone();
+    std::thread::Builder::new()
+        .stack_size(64 * 1024 * 1024)
+        .spawn(move || run_dfs(state, config))
+        .expect("failed to spawn solver thread")
+        .join()
+        .expect("solver thread panicked")
+}
+
+/// wasm32 equivalent of the native `solve_with_config` above. Does *not*
+/// spawn a dedicated thread: `std::thread::Builder::spawn` compiles for
+/// `wasm32-unknown-unknown` but doesn't actually work there (there is no
+/// real OS thread to create), and a library crate has no portable way to
+/// request a larger stack for itself from the wasm host at build time
+/// either. [`MAX_SEARCH_DEPTH`] is correspondingly more conservative on
+/// this target, since it is the *only* safety margin here.
+#[cfg(target_arch = "wasm32")]
+pub fn solve_with_config(state: &GameState, config: SolverConfig) -> Solvability {
+    run_dfs(state.clone(), config)
+}
+
+fn run_dfs(mut state: GameState, config: SolverConfig) -> Solvability {
     let mut path = Vec::new();
     let mut visited = HashSet::new();
     let mut budget = config.max_states;
@@ -67,6 +98,19 @@ pub fn solve_with_config(state: &GameState, config: SolverConfig) -> Solvability
         DfsOutcome::BudgetExceeded => Solvability::Unknown,
     }
 }
+
+/// A hard cap on `dfs` recursion depth (i.e. `path.len()`), independent of
+/// `SolverConfig::max_states`: a real FreeCell solution or forced dead-end
+/// chain is never anywhere close to this deep (typical solutions are tens
+/// to a few hundred moves), so this is purely a stack-safety backstop, not
+/// a practical limitation in either case. Hitting it aborts the search
+/// with [`Solvability::Unknown`] rather than a wrong answer. Smaller on
+/// wasm32, where `solve_with_config` has no dedicated larger-stack thread
+/// to fall back on as an additional margin.
+#[cfg(not(target_arch = "wasm32"))]
+const MAX_SEARCH_DEPTH: usize = 10_000;
+#[cfg(target_arch = "wasm32")]
+const MAX_SEARCH_DEPTH: usize = 2_000;
 
 enum DfsOutcome {
     Solved,
@@ -238,6 +282,10 @@ fn dfs(
     visited: &mut HashSet<StateKey>,
     budget: &mut u64,
 ) -> DfsOutcome {
+    if path.len() >= MAX_SEARCH_DEPTH {
+        return DfsOutcome::BudgetExceeded;
+    }
+
     let auto_moves = apply_safe_autoplay(state);
     let auto_count = auto_moves.len();
     path.extend(auto_moves);

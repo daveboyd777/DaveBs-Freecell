@@ -1,5 +1,6 @@
+use freecell::solver::Solvability;
 use freecell::stats::{Stats, StatsRecorder};
-use freecell::{parse_move, replay, Action, Game, Store};
+use freecell::{parse_move, replay, Action, Game, Loc, Store};
 use std::io::{self, BufRead, Write};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -124,6 +125,14 @@ fn main() {
                 dispatch(&mut store, &mut log, Action::Restart);
                 continue;
             }
+            "h" | "hint" => {
+                print_hint(store.state());
+                continue;
+            }
+            "g" | "report" => {
+                print_report(store.game());
+                continue;
+            }
             _ => {}
         }
 
@@ -178,6 +187,68 @@ fn print_replay(seed: u32, log: &[Action], expected: &Game) {
         }
         Ok(_) => println!("  Replay produced a different game (this is a bug)."),
         Err(e) => println!("  Replay failed: {e} (this is a bug)."),
+    }
+}
+
+/// `h`/`hint` (issue #13): suggest a next move via `freecell::analysis::
+/// hint`, using a search budget small enough to stay responsive but that
+/// can still occasionally come back empty-handed on a hard position.
+fn print_hint(state: &freecell::GameState) {
+    print!("Thinking...");
+    io::stdout().flush().ok();
+    match freecell::analysis::hint(state) {
+        Some((from, to)) => println!("\rHint: try {}{}          ", loc_char(from), loc_char(to)),
+        None => println!(
+            "\rNo hint available right now (the search was inconclusive, or this position may not be winnable)."
+        ),
+    }
+}
+
+/// `g`/`report` (issue #13): grade the current attempt via
+/// `freecell::analysis::grade` -- moves played vs. the solver's best line
+/// from the original deal, where a losing attempt went wrong, and which
+/// foundations stalled. Works whether the attempt is finished or not.
+fn print_report(game: &Game) {
+    print!("Analyzing...");
+    io::stdout().flush().ok();
+    let report = freecell::analysis::grade(game);
+    println!("\r                ");
+    println!("Moves played: {}", report.moves_played);
+    match &report.best_line {
+        Solvability::Solvable(moves) => println!(
+            "This deal is solvable in {} move(s) (solver's best line).",
+            moves.len()
+        ),
+        Solvability::Unsolvable => println!("This deal was never winnable."),
+        Solvability::Unknown => {
+            println!("Could not determine whether this deal is solvable (search inconclusive).")
+        }
+    }
+    match report.first_unsolvable_move {
+        Some(0) => println!("This attempt was never winnable, from the very start."),
+        Some(i) => println!("This attempt became unwinnable at move {i}."),
+        None => println!("This attempt is still winnable (or that was inconclusive)."),
+    }
+    const SUIT_CHARS: [char; 4] = ['C', 'D', 'H', 'S'];
+    const RANK_CHARS: [char; 14] = [
+        '-', 'A', '2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K',
+    ];
+    let foundations: Vec<String> = report
+        .foundations
+        .iter()
+        .enumerate()
+        .map(|(i, &r)| format!("{}{}", SUIT_CHARS[i], RANK_CHARS[r as usize]))
+        .collect();
+    println!("Foundations: {}", foundations.join(" "));
+}
+
+/// Render a location the same way the CLI's/TUI's/GUI's move grammar
+/// spells it (e.g. `Loc::Free(1)` -> `'b'`), for `print_hint`'s output.
+fn loc_char(loc: Loc) -> char {
+    match loc {
+        Loc::Cascade(i) => (b'1' + i as u8) as char,
+        Loc::Free(i) => (b'a' + i as u8) as char,
+        Loc::Foundation => 'h',
     }
 }
 
@@ -287,6 +358,8 @@ fn print_help() {
          \x20 y         redo the last undone move\n\
          \x20 r         restart this deal\n\
          \x20 n [seed]  new game (optionally a specific deal number)\n\
+         \x20 h         hint: suggest a move (may take a moment)\n\
+         \x20 g         report: grade this attempt so far (may take a moment)\n\
          \x20 q         quit\n"
     );
 }
