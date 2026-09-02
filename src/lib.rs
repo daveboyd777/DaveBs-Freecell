@@ -5,6 +5,7 @@
 
 use std::fmt;
 
+pub mod stats;
 pub mod store;
 pub use store::Store;
 
