@@ -7,6 +7,11 @@ edition = "2024"
 eframe = "0.36.1"
 egui = "0.36.1"
 freecell = { version = "0.1.0", path = ".." }
+# Renders the statistics charts (issue #14): win-rate trend and
+# move-count distribution. Draws into an in-memory RGB buffer (no file
+# I/O) for on-screen display via an egui texture; native-only PNG/SVG
+# export additionally uses its file-writing backends.
+plotters = "0.3"
 # Cross-platform `SystemTime`/`UNIX_EPOCH`: real time natively, backed by
 # `Date`/`Performance.now()` on wasm32, where `std::time::SystemTime`
 # panics. Already an `eframe` dependency; declared directly here too since
