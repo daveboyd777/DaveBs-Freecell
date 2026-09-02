@@ -19,6 +19,7 @@ mod board;
 
 use eframe::egui;
 use egui::{Align2, Color32, FontId, Pos2, Sense, Shape, Stroke, StrokeKind, pos2};
+use freecell::stats::{Stats, StatsRecorder};
 use freecell::{Action, GameState, Loc, Store, Suit, replay};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -85,6 +86,24 @@ impl FreecellApp {
         store.subscribe(move |_state, action| {
             log_for_subscriber.borrow_mut().push(*action);
         });
+
+        // Store subscriber that records every finished game to the OS data
+        // directory (issue #11), shared with the CLI and TUI via
+        // `freecell::stats::StatsRecorder` so all three contribute to the
+        // same persisted history. On wasm32 (issue #9), `default_stats_path`
+        // always returns `None` -- there is no OS data directory in a
+        // browser sandbox -- so stats are still tracked in-memory for the
+        // session but nothing persists across page reloads.
+        let stats_path = freecell::stats::default_stats_path();
+        let stats = stats_path
+            .as_deref()
+            .map(Stats::load_or_default)
+            .unwrap_or_default();
+        let recorder = Rc::new(RefCell::new(StatsRecorder::new(seed, stats, stats_path)));
+        store.subscribe(move |state, action| {
+            recorder.borrow_mut().observe(state, action);
+        });
+
         Self {
             store,
             original_seed: seed,

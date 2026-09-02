@@ -27,6 +27,7 @@ use crossterm::{
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
+use freecell::stats::{Stats, StatsRecorder};
 use freecell::{Action, ActionError, Loc, Store, parse_move, replay};
 use ratatui::{
     Terminal,
@@ -115,6 +116,21 @@ impl App {
         store.subscribe(move |_state, action| {
             log_for_subscriber.borrow_mut().push(*action);
         });
+
+        // Store subscriber that records every finished game to the OS data
+        // directory (issue #11), shared with the CLI and GUI via
+        // `freecell::stats::StatsRecorder` so all three contribute to the
+        // same persisted history.
+        let stats_path = freecell::stats::default_stats_path();
+        let stats = stats_path
+            .as_deref()
+            .map(Stats::load_or_default)
+            .unwrap_or_default();
+        let recorder = Rc::new(RefCell::new(StatsRecorder::new(seed, stats, stats_path)));
+        store.subscribe(move |state, action| {
+            recorder.borrow_mut().observe(state, action);
+        });
+
         Self {
             store,
             original_seed: seed,

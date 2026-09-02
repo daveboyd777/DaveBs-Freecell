@@ -1,8 +1,15 @@
+use freecell::stats::{Stats, StatsRecorder};
 use freecell::{parse_move, replay, Action, Game, Store};
+use std::cell::RefCell;
 use std::io::{self, BufRead, Write};
+use std::rc::Rc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn main() {
+    if std::env::args().nth(1).as_deref() == Some("stats") {
+        return print_stats();
+    }
+
     let original_seed = std::env::args()
         .nth(1)
         .and_then(|s| s.parse::<u32>().ok())
@@ -16,6 +23,25 @@ fn main() {
     // it is always a valid `(original_seed, log)` reconstruction of `store`.
     let mut log: Vec<Action> = Vec::new();
     let mut replay_shown = false;
+
+    // Store subscriber that records every finished game to the OS data
+    // directory (issue #11). Shared across all three UIs via
+    // `freecell::stats::StatsRecorder`, so play in the CLI, TUI, or GUI all
+    // contribute to the same persisted history.
+    let stats_path = freecell::stats::default_stats_path();
+    let stats = stats_path
+        .as_deref()
+        .map(Stats::load_or_default)
+        .unwrap_or_default();
+    let recorder = Rc::new(RefCell::new(StatsRecorder::new(
+        original_seed,
+        stats,
+        stats_path,
+    )));
+    let recorder_for_subscriber = Rc::clone(&recorder);
+    store.subscribe(move |state, action| {
+        recorder_for_subscriber.borrow_mut().observe(state, action);
+    });
 
     println!("FreeCell - type ? for help");
     loop {
@@ -131,6 +157,35 @@ fn random_seed() -> u32 {
         .unwrap_or(1);
     // Classic deals are numbered 1..=32000.
     nanos % 32000 + 1
+}
+
+/// `freecell stats`: print the persisted classic FreeCell statistics and
+/// exit, without starting the game loop (issue #11). A versioned
+/// `--json` export is issue #19's job; this is plain text only.
+fn print_stats() {
+    let stats = freecell::stats::default_stats_path()
+        .map(|path| Stats::load_or_default(&path))
+        .unwrap_or_default();
+
+    println!("Games played: {}", stats.games_played());
+    println!("Games won:    {}", stats.games_won());
+    println!("Games lost:   {}", stats.games_lost());
+    println!("Win rate:     {:.1}%", stats.win_percentage());
+    println!(
+        "Current streak: {}",
+        describe_streak(stats.current_streak())
+    );
+    println!("Longest winning streak: {}", stats.longest_winning_streak());
+    println!("Longest losing streak:  {}", stats.longest_losing_streak());
+}
+
+fn describe_streak(streak: freecell::stats::Streak) -> String {
+    use freecell::stats::Streak;
+    match streak {
+        Streak::Winning(n) => format!("{n} game(s) won in a row"),
+        Streak::Losing(n) => format!("{n} game(s) lost in a row"),
+        Streak::None => "none yet".to_string(),
+    }
 }
 
 fn render(store: &Store) {

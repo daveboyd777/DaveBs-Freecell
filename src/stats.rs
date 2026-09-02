@@ -8,7 +8,11 @@
 //! record every finished game live and persisting `Stats` to disk (#11),
 //! and the versioned `freecell stats --json` CLI export (#19).
 
+use crate::{Action, GameState};
 use serde::{Deserialize, Serialize};
+use std::fs;
+use std::io;
+use std::path::{Path, PathBuf};
 
 /// One finished game: which numbered deal it was, whether it was won, and
 /// how many moves it took.
@@ -112,5 +116,149 @@ impl Stats {
     /// the classic "per-deal history" stat.
     pub fn deal_history(&self, seed: u32) -> Vec<&GameResult> {
         self.history.iter().filter(|g| g.seed == seed).collect()
+    }
+
+    /// Load `Stats` from a JSON file at `path`.
+    pub fn load(path: &Path) -> io::Result<Stats> {
+        let text = fs::read_to_string(path)?;
+        serde_json::from_str(&text).map_err(io::Error::from)
+    }
+
+    /// `Stats::load`, falling back to an empty `Stats` on any error (a
+    /// missing file on first run, a permissions issue, or corrupt JSON) --
+    /// a fresh history is always a safe default, so callers such as the
+    /// three UIs' startup code don't each need their own fallback logic.
+    pub fn load_or_default(path: &Path) -> Stats {
+        Stats::load(path).unwrap_or_default()
+    }
+
+    /// Save `Stats` as JSON to `path`, creating any missing parent
+    /// directories first (the OS data directory `default_stats_path`
+    /// points at may not exist yet on a fresh install).
+    pub fn save(&self, path: &Path) -> io::Result<()> {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let json = serde_json::to_string_pretty(self).map_err(io::Error::from)?;
+        fs::write(path, json)
+    }
+}
+
+/// The default location `Stats::save`/`load` persist to: `stats.json` in
+/// this app's OS-appropriate data directory (issue #11). `None` only when
+/// the OS reports no usable home directory to derive one from.
+pub fn default_stats_path() -> Option<PathBuf> {
+    let dirs = directories::ProjectDirs::from("", "", "DaveBs-Freecell")?;
+    Some(dirs.data_dir().join("stats.json"))
+}
+
+/// Turns a [`crate::Store`] subscriber's `(GameState, Action)` stream into
+/// recorded [`GameResult`]s -- the "Store subscriber that records every
+/// finished game" issue #11 (and the roadmap's Phase 3 step 2) asks for.
+///
+/// This deliberately does not require any change to `Store::subscribe`'s
+/// `Fn(&GameState, &Action)` signature: every value it needs (moves played
+/// so far, the deal in progress, whether it's already been recorded as a
+/// win) is reconstructed purely from the stream of `(state, action)` pairs
+/// a subscriber already receives, mirrored against how [`crate::Game`]
+/// itself derives the same values (e.g. `moves_played` is `past.len()`,
+/// which changes by exactly one per `Move`/`Undo`/`Redo`, and by the
+/// foundation-count delta per `AutoPlay`).
+///
+/// **Scope note:** a loss is recorded when a deal with at least one move
+/// played is abandoned via `Action::Deal` or `Action::Restart` before it's
+/// won. Quitting a UI entirely without dispatching a new deal/restart is
+/// *not* recorded as a loss in this version -- that would need an explicit
+/// finalize call wired into each UI's shutdown path, which is left as a
+/// follow-up rather than bundled into this issue.
+pub struct StatsRecorder {
+    stats: Stats,
+    path: Option<PathBuf>,
+    seed: u32,
+    moves: u32,
+    foundation_total: u32,
+    recorded: bool,
+}
+
+impl StatsRecorder {
+    /// `initial_seed` is the deal the `Store` was constructed with --
+    /// `Store::new`/`from_game` never dispatch a `Deal` action for it, so a
+    /// subscriber has no other way to learn it. `path` is where `observe`
+    /// saves after recording a result; pass `None` to keep everything
+    /// in-memory (e.g. in tests).
+    pub fn new(initial_seed: u32, stats: Stats, path: Option<PathBuf>) -> StatsRecorder {
+        StatsRecorder {
+            stats,
+            path,
+            seed: initial_seed,
+            moves: 0,
+            foundation_total: 0,
+            recorded: false,
+        }
+    }
+
+    pub fn stats(&self) -> &Stats {
+        &self.stats
+    }
+
+    /// Feed one successful `(state, action)` dispatch from a `Store`
+    /// subscriber. Call this from the subscriber closure registered via
+    /// `Store::subscribe`.
+    pub fn observe(&mut self, state: &GameState, action: &Action) {
+        let new_total: u32 = state.foundations().iter().map(|&r| u32::from(r)).sum();
+        match action {
+            // A deal boundary: finalize whatever attempt was in progress,
+            // then start tracking the new one. `Deal` switches to a new
+            // seed; `Restart` re-plays the same one -- both equally leave
+            // the previous attempt behind.
+            Action::Deal { seed } => {
+                self.finalize_abandoned_attempt();
+                self.seed = *seed;
+                self.moves = 0;
+            }
+            Action::Restart => {
+                self.finalize_abandoned_attempt();
+                self.moves = 0;
+            }
+            // Exactly one `past` entry per dispatch, matching
+            // `Game::moves_played`'s `past.len()` (see `Game::do_move`).
+            Action::Move { .. } => self.moves += 1,
+            Action::Redo => self.moves += 1,
+            Action::Undo => self.moves = self.moves.saturating_sub(1),
+            // AutoPlay is one dispatch but zero-or-more `do_move` calls
+            // internally; the foundation-count delta is exactly how many
+            // of those succeeded, since AutoPlay only ever sends cards up.
+            Action::AutoPlay => self.moves += new_total.saturating_sub(self.foundation_total),
+        }
+        self.foundation_total = new_total;
+
+        if state.is_won() && !self.recorded {
+            self.record(true);
+        }
+    }
+
+    /// Record the in-progress attempt as a loss, if it's a genuine attempt
+    /// (at least one move played) that hasn't already been recorded as a
+    /// win. Called when a `Deal`/`Restart` leaves it behind.
+    fn finalize_abandoned_attempt(&mut self) {
+        if !self.recorded && self.moves > 0 {
+            self.record(false);
+        }
+        self.recorded = false;
+    }
+
+    fn record(&mut self, won: bool) {
+        self.stats.record(GameResult {
+            seed: self.seed,
+            won,
+            moves: self.moves,
+        });
+        self.recorded = true;
+        if let Some(path) = &self.path {
+            // Best-effort: a save failure (e.g. a read-only data
+            // directory) shouldn't interrupt play, only silently leave
+            // that result unpersisted for this session.
+            let _ = self.stats.save(path);
+        }
     }
 }
