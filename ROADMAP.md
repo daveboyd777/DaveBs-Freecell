@@ -180,7 +180,17 @@ Separation-of-concerns rules that keep the fork safe:
 5. Versioned JSON export (`freecell stats --json`) with schema tests —
    the hinge point the JavaScript track hangs on
 6. D3.js / Observable Plot dashboard on GitHub Pages consuming the JSON,
-   including deal-level drill-down and replay links
+   including deal-level drill-down and replay links -- done (#20). Lives
+   in `dashboard/` (plain static HTML/CSS/JS, D3 via CDN, no build step)
+   and deploys alongside the WASM game at `/dashboard/`. Since
+   `GameResult` only records a deal's seed and outcome, not its full
+   action log, "replay" here means opening the WASM game on that same
+   numbered deal (`?seed=`, parsed by `gui/src/main.rs`) rather than
+   replaying the exact recorded moves -- still fully in the spirit of
+   "a game is fully described by `(seed, action log)`", since a fresh
+   deal from that seed *is* that game's starting position.
+
+**Phase 3 is now complete.**
 
 ## Phase 4 — Release and maintenance automation
 

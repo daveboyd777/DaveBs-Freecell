@@ -95,6 +95,7 @@ cargo test            # run the engine specification (freecell package only)
 cargo fmt --all --check     # formatting, whole workspace
 cargo clippy --workspace --all-targets -- -D warnings   # lints, whole workspace
 cargo test --workspace      # tests, whole workspace (incl. tui/gui once they have any)
+node --test dashboard/*.test.mjs   # web dashboard's pure data-transform tests
 ```
 
 Project layout (a Cargo workspace):
@@ -107,11 +108,25 @@ src/main.rs           text CLI (dispatches Action through a Store)
 tests/                engine, reducer, and Store test suites
 tui/                  ratatui terminal UI (freecell-tui) -- WIP, Phase 2
 gui/                  egui/eframe desktop + WASM UI (freecell-gui) -- WIP, Phase 2
+dashboard/            static JS/D3 web stats dashboard, deployed alongside
+                      the WASM build to GitHub Pages at /dashboard/
 ```
 
 `tui/` and `gui/` are separate workspace members (not features of `freecell`)
 because their dependencies don't coexist cleanly in one crate -- see the
 comment at the top of the root `Cargo.toml`.
+
+## Web stats dashboard
+
+The classic FreeCell stats (win rate, streaks, per-deal history) are also
+browsable as interactive charts at
+[daveboyd777.github.io/DaveBs-Freecell/dashboard/](https://daveboyd777.github.io/DaveBs-Freecell/dashboard/)
+-- a static, JavaScript-only page (D3.js) that never computes anything
+itself; it only renders a `freecell stats --json` export you load (drag a
+file in, or try the built-in sample data). Clicking a game opens the WASM
+game pre-loaded on that deal for a rematch. See `dashboard/` and
+ROADMAP.md's "two-track visualization" section for the Rust/JavaScript
+split this is built on.
 
 ## Roadmap
 

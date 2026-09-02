@@ -36,6 +36,16 @@ jobs:
         # https://<user>.github.io/<repo>/, so the wasm/js/css asset base
         # path has to match the repository name.
         run: trunk build --release --public-url "/${{ github.event.repository.name }}/"
+      # The stats dashboard (issue #20) is plain static files with no
+      # build step of its own; it's served from the same Pages site as
+      # the game, at /dashboard/, by copying it into trunk's output
+      # directory alongside the built wasm/js/css before upload. Its
+      # "back to the game" and replay links use relative paths (`../`),
+      # so this works unchanged under any repository name.
+      - name: Copy the stats dashboard into the Pages output
+        run: |
+          cp -r dashboard gui/dist/dashboard
+          rm -f gui/dist/dashboard/*.test.mjs
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Upload build output
