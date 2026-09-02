@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DaveB's Freecell — Stats Dashboard</title>
+    <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+    <header>
+        <h1>DaveB's Freecell — Stats Dashboard</h1>
+        <a href="../">&larr; Back to the game</a>
+    </header>
+
+    <p>
+        Track B of the
+        <a href="https://github.com/daveboyd777/DaveBs-Freecell/blob/main/ROADMAP.md#phase-3--self-analysis-and-statistics">two-track visualization architecture</a>:
+        this page only renders — every number here comes straight from a
+        <code>freecell stats --json</code> export. Load your own file below,
+        or try the sample data to see it in action.
+    </p>
+
+    <section class="panel" id="loader">
+        <div id="drop-zone" tabindex="0">
+            Drop your <code>stats.json</code> file here, or click to choose one.
+            <input type="file" id="file-input" accept="application/json,.json" hidden />
+        </div>
+        <button id="sample-data-button" type="button">Load sample data</button>
+    </section>
+
+    <p id="error" role="alert"></p>
+
+    <section class="panel" id="summary" aria-label="Summary statistics">
+        <div class="stat"><div class="value" id="stat-played">–</div><div class="label">Games played</div></div>
+        <div class="stat"><div class="value" id="stat-won">–</div><div class="label">Won</div></div>
+        <div class="stat"><div class="value" id="stat-lost">–</div><div class="label">Lost</div></div>
+        <div class="stat"><div class="value" id="stat-win-pct">–</div><div class="label">Win rate</div></div>
+        <div class="stat"><div class="value" id="stat-streak">–</div><div class="label">Current streak</div></div>
+        <div class="stat"><div class="value" id="stat-best-streak">–</div><div class="label">Longest winning streak</div></div>
+        <div class="stat"><div class="value" id="stat-worst-streak">–</div><div class="label">Longest losing streak</div></div>
+    </section>
+
+    <section id="charts">
+        <div class="chart-panel">
+            <h2>Win-rate trend</h2>
+            <p class="hint">Hover a point for details; click it to replay that deal.</p>
+            <svg id="win-rate-chart" viewBox="0 0 560 320"></svg>
+        </div>
+        <div class="chart-panel">
+            <h2>Move-count distribution</h2>
+            <p class="hint">Green = won, red = lost. Click a bar to list its games.</p>
+            <svg id="move-count-chart" viewBox="0 0 560 320"></svg>
+            <div class="panel" id="bucket-detail"></div>
+        </div>
+    </section>
+
+    <section class="panel" id="history-table-wrapper">
+        <h2>Deal history</h2>
+        <table id="history-table">
+            <thead>
+                <tr>
+                    <th data-sort="gameNumber">Game #</th>
+                    <th data-sort="seed">Deal</th>
+                    <th data-sort="won">Result</th>
+                    <th data-sort="moves">Moves</th>
+                    <th>Replay</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </section>
+
+    <div id="tooltip"></div>
+
+    <script type="module" src="dashboard.js"></script>
+</body>
+</html>

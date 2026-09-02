@@ -36,6 +36,15 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Test
         run: cargo test --workspace
+      # The web stats dashboard (issue #20) is plain static JS with no
+      # build step; its pure data-transform module has its own Node test
+      # suite (dashboard/stats-view.test.mjs), run here the same way a
+      # contributor would locally: `node --test`, no npm install needed.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Test web dashboard
+        run: node --test dashboard/*.test.mjs
 
   build-windows:
     name: Build (Windows)

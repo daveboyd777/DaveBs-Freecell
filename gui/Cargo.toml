@@ -20,7 +20,16 @@ web-time = "1.1"
 
 # Only needed for the wasm32 entry point in `main.rs` (issue #9): `eframe`
 # itself already brings in and re-exports `wasm_bindgen`/`web_sys` under
-# `#[cfg(target_arch = "wasm32")]`, so those don't need to be declared here.
+# `#[cfg(target_arch = "wasm32")]`. `wasm-bindgen-futures` and `log` are
+# used via that re-export and don't need their own entries here; `web-sys`
+# is declared explicitly below only to add feature flags `eframe`'s own
+# dependency doesn't enable (issue #20).
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen-futures = "0.4"
 log = "0.4"
+# `Window::location`/`Location::search` for parsing `?seed=` out of the
+# page URL (issue #20's dashboard replay links). `eframe` already depends
+# on `web-sys` with a large feature set of its own; declaring it directly
+# here too just unifies with that same dependency, adding the two
+# features this crate's own code needs.
+web-sys = { version = "0.3", features = ["Location", "Window"] }

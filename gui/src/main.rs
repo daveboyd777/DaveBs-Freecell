@@ -37,6 +37,23 @@ fn random_seed() -> u32 {
     nanos % 32000 + 1
 }
 
+/// Parses a `seed` value out of the page's `?key=value&...` query string
+/// (issue #20), e.g. `"?seed=1234"` -> `Some(1234)`. `None` covers every
+/// way this can legitimately be absent: no `window`/`location` (should
+/// never happen in a browser, but this is not worth a panic over), no
+/// query string at all, no `seed` key, or a `seed` value that doesn't
+/// parse as a `u32` -- all of which fall back to `random_seed()` at the
+/// call site exactly like a plain, parameter-less page load.
+#[cfg(target_arch = "wasm32")]
+fn seed_from_url_query() -> Option<u32> {
+    let search = eframe::web_sys::window()?.location().search().ok()?;
+    search
+        .strip_prefix('?')?
+        .split('&')
+        .find_map(|pair| pair.strip_prefix("seed="))
+        .and_then(|value| value.parse().ok())
+}
+
 /// Render a location the same way the CLI's/TUI's move grammar spells it,
 /// for the action-log line (e.g. `Loc::Free(1)` -> "b").
 fn loc_char(loc: Loc) -> char {
@@ -783,16 +800,17 @@ fn main() -> eframe::Result<()> {
 /// usage: install the web logger, grab the `<canvas id="the_canvas_id">`
 /// from `gui/index.html`, and start `WebRunner` inside a spawned local
 /// future (`WebRunner::start` is async; a plain `wasm32` `main` cannot be).
-/// There's no `?seed=` URL parsing -- a browser session starts on a random
-/// deal exactly like running the native binary with no argv, and "New
-/// Game" already covers dealing a specific seed.
+/// A `?seed=1234` URL parameter deals that specific game instead of a
+/// random one (issue #20): the web stats dashboard's replay links open
+/// this page with the deal's seed in the URL this way, since "New Game"
+/// alone gives no way to land on a specific deal from an external link.
 #[cfg(target_arch = "wasm32")]
 fn main() {
     use eframe::wasm_bindgen::JsCast as _;
 
     eframe::WebLogger::init(log::LevelFilter::Debug).ok();
 
-    let seed = random_seed();
+    let seed = seed_from_url_query().unwrap_or_else(random_seed);
     let web_options = eframe::WebOptions::default();
 
     wasm_bindgen_futures::spawn_local(async move {

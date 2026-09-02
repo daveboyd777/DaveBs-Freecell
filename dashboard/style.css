@@ -1,0 +1,257 @@
+/* Stats dashboard (issue #20). Dark theme matching gui/index.html's
+   #1b1b1b canvas background, so the game and the dashboard feel like one
+   app even though they're built with entirely different tech stacks. */
+
+:root {
+  color-scheme: dark;
+  --bg: #1b1b1b;
+  --panel: #262626;
+  --border: #3a3a3a;
+  --text: #dddddd;
+  --muted: #9a9a9a;
+  --accent: #4da3ff;
+  --won: #2ecc71;
+  --lost: #e74c3c;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 24px;
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+}
+
+header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+h1 {
+  font-size: 1.4rem;
+  margin: 0;
+}
+
+a {
+  color: var(--accent);
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+#loader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+#drop-zone {
+  border: 2px dashed var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  text-align: center;
+  color: var(--muted);
+  flex: 1 1 280px;
+  cursor: pointer;
+}
+
+#drop-zone.drag-over {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+button {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+
+button:hover {
+  border-color: var(--accent);
+}
+
+#error {
+  color: var(--lost);
+  font-weight: 600;
+  display: none;
+}
+
+#error.visible {
+  display: block;
+}
+
+#summary {
+  display: none;
+}
+
+#summary.visible {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.stat {
+  text-align: center;
+}
+
+.stat .value {
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+.stat .label {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+#charts {
+  display: none;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+
+#charts.visible {
+  display: flex;
+}
+
+.chart-panel {
+  flex: 1 1 480px;
+}
+
+.chart-panel h2 {
+  font-size: 1.05rem;
+  margin: 0 0 8px;
+}
+
+.chart-panel svg {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.axis text {
+  fill: var(--muted);
+  font-size: 11px;
+}
+
+.axis path,
+.axis line {
+  stroke: var(--border);
+}
+
+.win-rate-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.win-rate-point {
+  fill: var(--accent);
+  cursor: pointer;
+}
+
+.win-rate-point:hover {
+  fill: #fff;
+}
+
+.bucket-bar {
+  cursor: pointer;
+}
+
+.bucket-bar.won {
+  fill: var(--won);
+}
+
+.bucket-bar.lost {
+  fill: var(--lost);
+}
+
+.bucket-bar:hover {
+  opacity: 0.8;
+}
+
+#tooltip {
+  position: fixed;
+  pointer-events: none;
+  background: #000;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 0.85rem;
+  display: none;
+  z-index: 10;
+  white-space: nowrap;
+}
+
+#bucket-detail {
+  display: none;
+}
+
+#bucket-detail.visible {
+  display: block;
+}
+
+#history-table-wrapper {
+  display: none;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+#history-table-wrapper.visible {
+  display: block;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+th {
+  position: sticky;
+  top: 0;
+  background: var(--panel);
+  cursor: pointer;
+  user-select: none;
+}
+
+td.won {
+  color: var(--won);
+}
+
+td.lost {
+  color: var(--lost);
+}
+
+.replay-link {
+  white-space: nowrap;
+}
