@@ -22,7 +22,10 @@ use egui::{Align2, Color32, FontId, Pos2, Sense, Shape, Stroke, StrokeKind, pos2
 use freecell::{Action, GameState, Loc, Store, Suit, replay};
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::time::{SystemTime, UNIX_EPOCH};
+// `web_time` mirrors `std::time`'s API but is backed by JS `Date`/
+// `Performance.now()` on wasm32 (issue #9), where `std::time::SystemTime`
+// panics at runtime. One import works correctly on both targets.
+use web_time::{SystemTime, UNIX_EPOCH};
 
 fn random_seed() -> u32 {
     let nanos = SystemTime::now()
@@ -522,6 +525,7 @@ impl eframe::App for FreecellApp {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result<()> {
     let seed = std::env::args()
         .nth(1)
@@ -537,6 +541,56 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(move |_cc| Ok(Box::new(FreecellApp::new(seed)))),
     )
+}
+
+/// Browser entry point (issue #9), mirroring `eframe`'s own documented web
+/// usage: install the web logger, grab the `<canvas id="the_canvas_id">`
+/// from `gui/index.html`, and start `WebRunner` inside a spawned local
+/// future (`WebRunner::start` is async; a plain `wasm32` `main` cannot be).
+/// There's no `?seed=` URL parsing -- a browser session starts on a random
+/// deal exactly like running the native binary with no argv, and "New
+/// Game" already covers dealing a specific seed.
+#[cfg(target_arch = "wasm32")]
+fn main() {
+    use eframe::wasm_bindgen::JsCast as _;
+
+    eframe::WebLogger::init(log::LevelFilter::Debug).ok();
+
+    let seed = random_seed();
+    let web_options = eframe::WebOptions::default();
+
+    wasm_bindgen_futures::spawn_local(async move {
+        let document = eframe::web_sys::window()
+            .expect("no window")
+            .document()
+            .expect("no document");
+
+        let canvas = document
+            .get_element_by_id("the_canvas_id")
+            .expect("failed to find #the_canvas_id")
+            .dyn_into::<eframe::web_sys::HtmlCanvasElement>()
+            .expect("#the_canvas_id was not a canvas element");
+
+        let start_result = eframe::WebRunner::new()
+            .start(
+                canvas,
+                web_options,
+                Box::new(move |_cc| Ok(Box::new(FreecellApp::new(seed)))),
+            )
+            .await;
+
+        if let Some(loading_text) = document.get_element_by_id("loading_text") {
+            match start_result {
+                Ok(()) => loading_text.remove(),
+                Err(e) => {
+                    loading_text.set_inner_html(
+                        "<p>The app has crashed. See the browser developer console for details.</p>",
+                    );
+                    panic!("failed to start eframe: {e:?}");
+                }
+            }
+        }
+    });
 }
 
 #[cfg(test)]

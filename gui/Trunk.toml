@@ -1,0 +1,10 @@
+# Trunk config for the `freecell-gui` WASM/GitHub Pages build (issue #9).
+#
+# `public_url` is intentionally left unset here: GitHub Pages project sites
+# are served at `https://<user>.github.io/<repo>/`, so the base path depends
+# on the repository name. CI passes it via `trunk build --public-url`
+# instead of hardcoding the repo name into version-controlled config.
+
+[build]
+target = "index.html"
+dist = "dist"

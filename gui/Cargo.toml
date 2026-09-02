@@ -7,3 +7,15 @@ edition = "2024"
 eframe = "0.36.1"
 egui = "0.36.1"
 freecell = { version = "0.1.0", path = ".." }
+# Cross-platform `SystemTime`/`UNIX_EPOCH`: real time natively, backed by
+# `Date`/`Performance.now()` on wasm32, where `std::time::SystemTime`
+# panics. Already an `eframe` dependency; declared directly here too since
+# `random_seed` uses it on both targets (issue #9).
+web-time = "1.1"
+
+# Only needed for the wasm32 entry point in `main.rs` (issue #9): `eframe`
+# itself already brings in and re-exports `wasm_bindgen`/`web_sys` under
+# `#[cfg(target_arch = "wasm32")]`, so those don't need to be declared here.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen-futures = "0.4"
+log = "0.4"
