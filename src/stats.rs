@@ -3,15 +3,24 @@
 //! history -- the stats tracked by classic Microsoft FreeCell.
 //!
 //! This module is only the data model and its math over a plain
-//! `Vec<GameResult>`. Two closely related concerns are deliberately kept
-//! out of it, each with its own issue: wiring a `Store` subscriber to
-//! record every finished game live and persisting `Stats` to disk (#11),
-//! and the versioned `freecell stats --json` CLI export (#19).
+//! `Vec<GameResult>`. One closely related concern is deliberately kept out
+//! of it, with its own issue: wiring a `Store` subscriber to record every
+//! finished game live and persisting `Stats` to disk (#11).
 //!
 //! [`StatsRecorder`] additionally exposes `finalize_on_exit`, which each
 //! UI calls from its shutdown path (a quit command, Ctrl+C, or a window
 //! close) so abandoning a game by quitting outright -- not just by
 //! starting a new deal or restarting -- is recorded as a loss too.
+//!
+//! [`StatsExport`] is the versioned `freecell stats --json` schema (#19):
+//! a *stable, external contract*, deliberately kept separate from
+//! [`Stats`]'s own `Serialize`/`Deserialize` impl (the internal on-disk
+//! persistence format `Stats::save`/`load` use, issue #11). That internal
+//! format is free to evolve alongside the app itself, since only this app
+//! ever reads it back; `StatsExport` is the hinge point external
+//! renderers (in-app charts, issue #14; the web dashboard, issue #20)
+//! depend on, versioned so a future breaking change to it is explicit
+//! rather than silently changing what those renderers see.
 
 use crate::{Action, GameState};
 use serde::{Deserialize, Serialize};
@@ -123,6 +132,11 @@ impl Stats {
         self.history.iter().filter(|g| g.seed == seed).collect()
     }
 
+    /// The complete, unfiltered history of finished games, in play order.
+    pub fn history(&self) -> &[GameResult] {
+        &self.history
+    }
+
     /// Load `Stats` from a JSON file at `path`.
     pub fn load(path: &Path) -> io::Result<Stats> {
         let text = fs::read_to_string(path)?;
@@ -155,6 +169,91 @@ impl Stats {
 pub fn default_stats_path() -> Option<PathBuf> {
     let dirs = directories::ProjectDirs::from("", "", "DaveBs-Freecell")?;
     Some(dirs.data_dir().join("stats.json"))
+}
+
+/// The current version of [`StatsExport`]'s JSON shape. Bump this (and add
+/// a new schema-snapshot test alongside the old one, per the roadmap's
+/// "a change to it is a breaking change reviewed like engine code") any
+/// time a field is added, renamed, removed, or changes type or meaning.
+pub const STATS_EXPORT_VERSION: u32 = 1;
+
+/// [`Streak`]'s shape in the versioned JSON export: an internally-tagged
+/// enum (a `"type"` field alongside any data) rather than `Streak`'s own
+/// derived externally-tagged representation, so the JSON reads naturally
+/// for a JS consumer (e.g. `{"type": "winning", "length": 3}` instead of
+/// `{"Winning": 3}`) without depending on `Streak`'s own serialization,
+/// which is free to change since it's only used internally by
+/// `Stats::save`/`load`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum StreakExport {
+    Winning { length: u32 },
+    Losing { length: u32 },
+    None,
+}
+
+impl From<Streak> for StreakExport {
+    fn from(streak: Streak) -> StreakExport {
+        match streak {
+            Streak::Winning(length) => StreakExport::Winning { length },
+            Streak::Losing(length) => StreakExport::Losing { length },
+            Streak::None => StreakExport::None,
+        }
+    }
+}
+
+/// The versioned `freecell stats --json` schema (issue #19): every
+/// classic-FreeCell statistic [`Stats`] computes, plus the complete
+/// per-deal history, in one stable, tested JSON shape external renderers
+/// can depend on. See the module docs for why this is a separate type
+/// from `Stats`'s own (internal, unversioned) `Serialize`/`Deserialize`
+/// impl.
+///
+/// Deliberately scoped to exactly what the `stats` module itself computes
+/// -- solver-derived per-game grading (issue #13's `analysis::grade`, e.g.
+/// "solver's best line was 52") is not included here, since computing it
+/// for an entire history would mean re-running the solver once per
+/// historical game on every export, which is a materially different
+/// (and potentially very slow) feature left to its own issue if wanted.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StatsExport {
+    pub version: u32,
+    pub games_played: usize,
+    pub games_won: usize,
+    pub games_lost: usize,
+    pub win_percentage: f64,
+    pub current_streak: StreakExport,
+    pub longest_winning_streak: u32,
+    pub longest_losing_streak: u32,
+    /// The complete, unfiltered history of finished games, in play order
+    /// -- every numbered deal attempted, won, or lost (the classic
+    /// "per-deal history" stat, and the raw material both the in-app
+    /// charts (issue #14) and the web dashboard (issue #20) need for a
+    /// win-rate trend or move-count distribution over time).
+    pub history: Vec<GameResult>,
+}
+
+impl StatsExport {
+    /// Snapshot `stats` into the current version of the export schema.
+    pub fn from_stats(stats: &Stats) -> StatsExport {
+        StatsExport {
+            version: STATS_EXPORT_VERSION,
+            games_played: stats.games_played(),
+            games_won: stats.games_won(),
+            games_lost: stats.games_lost(),
+            win_percentage: stats.win_percentage(),
+            current_streak: stats.current_streak().into(),
+            longest_winning_streak: stats.longest_winning_streak(),
+            longest_losing_streak: stats.longest_losing_streak(),
+            history: stats.history().to_vec(),
+        }
+    }
+
+    /// Serialize to pretty-printed JSON, matching `Stats::save`'s own
+    /// formatting choice for consistency.
+    pub fn to_json(&self) -> serde_json::Result<String> {
+        serde_json::to_string_pretty(self)
+    }
 }
 
 /// Turns a [`crate::Store`] subscriber's `(GameState, Action)` stream into
