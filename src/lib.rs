@@ -5,6 +5,7 @@
 
 use std::fmt;
 
+pub mod analysis;
 pub mod solver;
 pub mod stats;
 pub mod store;
@@ -485,6 +486,15 @@ impl Game {
     /// How many moves have been played (and can be undone).
     pub fn moves_played(&self) -> usize {
         self.past.len()
+    }
+
+    /// Every ancestor of the current position since the last deal/restart,
+    /// oldest first -- i.e. the same states [`Game::undo`] can still step
+    /// back through. Does not include the current position itself; pair
+    /// with [`Game::state`] for the complete sequence from the deal to now
+    /// (used by [`crate::analysis::grade`], issue #13).
+    pub fn history(&self) -> &[GameState] {
+        &self.past
     }
 
     /// Repeatedly send every playable card to the foundations.

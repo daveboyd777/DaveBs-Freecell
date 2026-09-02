@@ -200,6 +200,18 @@ impl App {
                 return;
             }
             "r" | "restart" => return self.dispatch(Action::Restart),
+            "h" | "hint" => {
+                self.status = Some(match freecell::analysis::hint(self.store.state()) {
+                    Some((from, to)) => format!("Hint: try {}{}", loc_char(from), loc_char(to)),
+                    None => "No hint available right now.".to_string(),
+                });
+                return;
+            }
+            "g" | "report" => {
+                let report = freecell::analysis::grade(self.store.game());
+                self.status = Some(describe_report(&report));
+                return;
+            }
             _ => {}
         }
 
@@ -517,6 +529,7 @@ fn draw_footer(frame: &mut ratatui::Frame, area: Rect, app: &App) {
     if app.show_help {
         let text = "Moves: two chars, source then destination -- 1-8 cascades, a-d free cells, h/f foundations (e.g. 35, 1a, 2h).\n\
              Commands: a auto-play, u undo, y redo, r restart, n [seed] new game, q quit.\n\
+             \x20         h hint (may take a moment), g report (may take a moment).\n\
              Mouse: click a location to select it, click again to move there (or the same spot to deselect).\n\
              Press ? to close help.";
         frame.render_widget(
@@ -556,6 +569,36 @@ fn draw_footer(frame: &mut ratatui::Frame, area: Rect, app: &App) {
         Paragraph::new(lines).block(Block::default().borders(Borders::ALL)),
         area,
     );
+}
+
+/// Summarize a `freecell::analysis::GameReport` (issue #13) into one
+/// compact status line: moves played vs. the solver's best line from the
+/// original deal, where a losing attempt went wrong (if anywhere), and
+/// which foundations stalled.
+fn describe_report(report: &freecell::analysis::GameReport) -> String {
+    use freecell::solver::Solvability;
+    let best_line = match &report.best_line {
+        Solvability::Solvable(moves) => format!("best line {}", moves.len()),
+        Solvability::Unsolvable => "never winnable".to_string(),
+        Solvability::Unknown => "best line unknown".to_string(),
+    };
+    let went_wrong = match report.first_unsolvable_move {
+        Some(0) => "unwinnable from the start".to_string(),
+        Some(i) => format!("went wrong at move {i}"),
+        None => "still winnable".to_string(),
+    };
+    const SUIT_CHARS: [char; 4] = ['C', 'D', 'H', 'S'];
+    let foundations: Vec<String> = report
+        .foundations
+        .iter()
+        .enumerate()
+        .map(|(i, &r)| format!("{}{}", SUIT_CHARS[i], rank_char(r)))
+        .collect();
+    format!(
+        "{} moves | {best_line} | {went_wrong} | {}",
+        report.moves_played,
+        foundations.join(" ")
+    )
 }
 
 /// The `(seed, actions)` replay proof issue #5 asks for, adapted for the
