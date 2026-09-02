@@ -18,8 +18,8 @@
 mod board;
 
 use eframe::egui;
-use egui::{Align2, Color32, FontId, Sense, Stroke, StrokeKind};
-use freecell::{Action, GameState, Loc, Store, replay};
+use egui::{Align2, Color32, FontId, Pos2, Sense, Shape, Stroke, StrokeKind, pos2};
+use freecell::{Action, GameState, Loc, Store, Suit, replay};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -314,18 +314,44 @@ fn draw_card(painter: &egui::Painter, rect: egui::Rect, card: freecell::Card, hi
         Stroke::new(1.0, Color32::DARK_GRAY),
         StrokeKind::Inside,
     );
-    let text_color = if card.suit.is_red() {
-        Color32::from_rgb(190, 20, 20)
-    } else {
-        Color32::BLACK
-    };
+    let color = suit_color(card.suit);
+    let rank = rank_label(card.rank);
+
+    // Two-corner index (rank + a real suit pip) like an actual card, plus
+    // a large center pip. The bottom-right corner isn't rotated 180
+    // degrees -- `Painter::text` has no cheap glyph-flip -- but it still
+    // reads as a card index rather than a flat two-character code.
     painter.text(
         rect.left_top() + egui::vec2(6.0, 4.0),
         Align2::LEFT_TOP,
-        card.to_string(),
-        FontId::proportional(20.0),
-        text_color,
+        rank,
+        FontId::proportional(16.0),
+        color,
     );
+    draw_pip(
+        painter,
+        rect.left_top() + egui::vec2(14.0, 32.0),
+        7.0,
+        card.suit,
+        color,
+    );
+
+    painter.text(
+        rect.right_bottom() - egui::vec2(6.0, 4.0),
+        Align2::RIGHT_BOTTOM,
+        rank,
+        FontId::proportional(16.0),
+        color,
+    );
+    draw_pip(
+        painter,
+        rect.right_bottom() - egui::vec2(14.0, 32.0),
+        7.0,
+        card.suit,
+        color,
+    );
+
+    draw_pip(painter, rect.center(), 18.0, card.suit, color);
 }
 
 fn draw_empty_slot(painter: &egui::Painter, rect: egui::Rect, dimmed: bool) {
@@ -338,7 +364,6 @@ fn draw_empty_slot(painter: &egui::Painter, rect: egui::Rect, dimmed: bool) {
 }
 
 fn draw_foundation(painter: &egui::Painter, rect: egui::Rect, suit_index: usize, rank: u8) {
-    const SUIT_CHARS: [char; 4] = ['C', 'D', 'H', 'S'];
     painter.rect_filled(rect, 6.0, Color32::from_gray(235));
     painter.rect_stroke(
         rect,
@@ -346,25 +371,129 @@ fn draw_foundation(painter: &egui::Painter, rect: egui::Rect, suit_index: usize,
         Stroke::new(1.0, Color32::DARK_GRAY),
         StrokeKind::Inside,
     );
-    let label = if rank == 0 {
-        format!("{}-", SUIT_CHARS[suit_index])
-    } else {
-        format!("{}{}", SUIT_CHARS[suit_index], rank_char(rank))
-    };
+    let suit = suit_from_index(suit_index);
+    if rank == 0 {
+        // Empty pile: a dimmed outline-weight pip for the suit it will
+        // eventually collect, no rank -- nothing has landed here yet.
+        draw_pip(painter, rect.center(), 14.0, suit, Color32::from_gray(170));
+        return;
+    }
+    let color = suit_color(suit);
     painter.text(
-        rect.center(),
-        Align2::CENTER_CENTER,
-        label,
-        FontId::proportional(18.0),
-        Color32::BLACK,
+        rect.left_top() + egui::vec2(6.0, 4.0),
+        Align2::LEFT_TOP,
+        rank_label(rank),
+        FontId::proportional(14.0),
+        color,
     );
+    draw_pip(painter, rect.center(), 16.0, suit, color);
 }
 
-fn rank_char(rank: u8) -> char {
-    const RANK_CHARS: [char; 14] = [
-        '-', 'A', '2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K',
+/// Map a foundation pile index (`Suit as usize`, matching
+/// [`freecell::GameState::foundations`]'s indexing) back to the `Suit` it
+/// represents. Mirrors the CLI's/TUI's own hardcoded C/D/H/S ordering.
+fn suit_from_index(i: usize) -> Suit {
+    match i {
+        0 => Suit::Clubs,
+        1 => Suit::Diamonds,
+        2 => Suit::Hearts,
+        3 => Suit::Spades,
+        _ => unreachable!("foundation index is always 0..4"),
+    }
+}
+
+fn suit_color(suit: Suit) -> Color32 {
+    if suit.is_red() {
+        Color32::from_rgb(190, 20, 20)
+    } else {
+        Color32::BLACK
+    }
+}
+
+/// The corner index label for a rank, spelling out "10" the way a real
+/// card does rather than the CLI/TUI's single-character `T`.
+fn rank_label(rank: u8) -> &'static str {
+    const LABELS: [&str; 13] = [
+        "A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K",
     ];
-    RANK_CHARS[rank as usize]
+    LABELS[(rank - 1) as usize]
+}
+
+/// Draw a real vector suit pip rather than a font glyph, so it renders
+/// identically regardless of the active font's suit-symbol coverage. This
+/// is the "full icon" upgrade from the plain two-character card code: a
+/// genuine club/diamond/heart/spade shape built from circles and filled
+/// triangles, centered at `center` and sized to fit within roughly a
+/// `2*r`-wide box. No image assets or network fetch required.
+fn draw_pip(painter: &egui::Painter, center: Pos2, r: f32, suit: Suit, color: Color32) {
+    match suit {
+        Suit::Diamonds => draw_diamond(painter, center, r, color),
+        Suit::Hearts => draw_heart(painter, center, r, color),
+        Suit::Spades => draw_spade(painter, center, r, color),
+        Suit::Clubs => draw_club(painter, center, r, color),
+    }
+}
+
+fn draw_diamond(painter: &egui::Painter, center: Pos2, r: f32, color: Color32) {
+    let points = vec![
+        pos2(center.x, center.y - r),
+        pos2(center.x + r * 0.7, center.y),
+        pos2(center.x, center.y + r),
+        pos2(center.x - r * 0.7, center.y),
+    ];
+    painter.add(Shape::convex_polygon(points, color, Stroke::NONE));
+}
+
+fn draw_heart(painter: &egui::Painter, center: Pos2, r: f32, color: Color32) {
+    let lobe_r = r * 0.5;
+    let lobe_y = center.y - lobe_r * 0.4;
+    painter.circle_filled(pos2(center.x - lobe_r * 0.85, lobe_y), lobe_r, color);
+    painter.circle_filled(pos2(center.x + lobe_r * 0.85, lobe_y), lobe_r, color);
+    let points = vec![
+        pos2(center.x - r * 0.95, lobe_y + lobe_r * 0.15),
+        pos2(center.x + r * 0.95, lobe_y + lobe_r * 0.15),
+        pos2(center.x, center.y + r),
+    ];
+    painter.add(Shape::convex_polygon(points, color, Stroke::NONE));
+}
+
+fn draw_spade(painter: &egui::Painter, center: Pos2, r: f32, color: Color32) {
+    // An upside-down heart plus a small stem: the classic spade shape.
+    let lobe_r = r * 0.45;
+    let lobe_y = center.y + r * 0.15;
+    painter.circle_filled(pos2(center.x - lobe_r * 0.85, lobe_y), lobe_r, color);
+    painter.circle_filled(pos2(center.x + lobe_r * 0.85, lobe_y), lobe_r, color);
+    let points = vec![
+        pos2(center.x - r * 0.85, lobe_y + lobe_r * 0.2),
+        pos2(center.x + r * 0.85, lobe_y + lobe_r * 0.2),
+        pos2(center.x, center.y - r),
+    ];
+    painter.add(Shape::convex_polygon(points, color, Stroke::NONE));
+    let stem = egui::Rect::from_center_size(
+        pos2(center.x, center.y + r * 0.8),
+        egui::vec2(r * 0.22, r * 0.5),
+    );
+    painter.rect_filled(stem, 0.0, color);
+}
+
+fn draw_club(painter: &egui::Painter, center: Pos2, r: f32, color: Color32) {
+    let lobe_r = r * 0.42;
+    painter.circle_filled(pos2(center.x, center.y - lobe_r * 0.9), lobe_r, color);
+    painter.circle_filled(
+        pos2(center.x - lobe_r * 0.95, center.y + lobe_r * 0.35),
+        lobe_r,
+        color,
+    );
+    painter.circle_filled(
+        pos2(center.x + lobe_r * 0.95, center.y + lobe_r * 0.35),
+        lobe_r,
+        color,
+    );
+    let stem = egui::Rect::from_center_size(
+        pos2(center.x, center.y + r * 0.8),
+        egui::vec2(r * 0.2, r * 0.55),
+    );
+    painter.rect_filled(stem, 0.0, color);
 }
 
 /// The `(seed, actions)` replay proof issues #5/#6 ask for, adapted for the
@@ -408,4 +537,35 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(move |_cc| Ok(Box::new(FreecellApp::new(seed)))),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rank_label_spells_out_ten_and_uses_single_letters_elsewhere() {
+        assert_eq!(rank_label(1), "A");
+        assert_eq!(rank_label(9), "9");
+        assert_eq!(rank_label(10), "10");
+        assert_eq!(rank_label(11), "J");
+        assert_eq!(rank_label(13), "K");
+    }
+
+    #[test]
+    fn suit_color_is_red_for_hearts_and_diamonds_only() {
+        assert_eq!(suit_color(Suit::Hearts), Color32::from_rgb(190, 20, 20));
+        assert_eq!(suit_color(Suit::Diamonds), Color32::from_rgb(190, 20, 20));
+        assert_eq!(suit_color(Suit::Clubs), Color32::BLACK);
+        assert_eq!(suit_color(Suit::Spades), Color32::BLACK);
+    }
+
+    #[test]
+    fn suit_from_index_matches_the_foundations_array_ordering() {
+        // Same C/D/H/S-by-index convention the CLI and TUI hardcode.
+        assert_eq!(suit_from_index(0), Suit::Clubs);
+        assert_eq!(suit_from_index(1), Suit::Diamonds);
+        assert_eq!(suit_from_index(2), Suit::Hearts);
+        assert_eq!(suit_from_index(3), Suit::Spades);
+    }
 }
