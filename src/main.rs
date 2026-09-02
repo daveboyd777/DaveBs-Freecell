@@ -1,8 +1,14 @@
+use freecell::stats::{Stats, StatsRecorder};
 use freecell::{parse_move, replay, Action, Game, Store};
 use std::io::{self, BufRead, Write};
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn main() {
+    if std::env::args().nth(1).as_deref() == Some("stats") {
+        return print_stats();
+    }
+
     let original_seed = std::env::args()
         .nth(1)
         .and_then(|s| s.parse::<u32>().ok())
@@ -16,6 +22,50 @@ fn main() {
     // it is always a valid `(original_seed, log)` reconstruction of `store`.
     let mut log: Vec<Action> = Vec::new();
     let mut replay_shown = false;
+
+    // Store subscriber that records every finished game to the OS data
+    // directory (issue #11). Shared across all three UIs via
+    // `freecell::stats::StatsRecorder`, so play in the CLI, TUI, or GUI all
+    // contribute to the same persisted history. `Arc<Mutex<_>>` rather than
+    // the other UIs' `Rc<RefCell<_>>`: the Ctrl+C handler below runs on a
+    // separate thread (`ctrlc`'s), which requires `Send`.
+    let stats_path = freecell::stats::default_stats_path();
+    let stats = stats_path
+        .as_deref()
+        .map(Stats::load_or_default)
+        .unwrap_or_default();
+    let recorder = Arc::new(Mutex::new(StatsRecorder::new(
+        original_seed,
+        stats,
+        stats_path,
+    )));
+    let recorder_for_subscriber = Arc::clone(&recorder);
+    store.subscribe(move |state, action| {
+        recorder_for_subscriber
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .observe(state, action);
+    });
+
+    // Closes the quit-detection gap `observe` alone leaves: pressing
+    // Ctrl+C recorded nothing before, since it never dispatches a
+    // `Deal`/`Restart` for `observe` to trigger on. `ctrlc` runs this
+    // closure on its own dedicated thread once, then this process exits;
+    // `StatsRecorder::finalize_on_exit` is the idempotent "record the
+    // in-progress attempt as a loss if it's genuine" call also used after
+    // the main loop below, so a Ctrl+C that races with a normal quit can
+    // never double-record.
+    let recorder_for_signal = Arc::clone(&recorder);
+    if let Err(e) = ctrlc::set_handler(move || {
+        recorder_for_signal
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .finalize_on_exit();
+        println!("\nInterrupted.");
+        std::process::exit(0);
+    }) {
+        eprintln!("Warning: failed to install Ctrl+C handler: {e}");
+    }
 
     println!("FreeCell - type ? for help");
     loop {
@@ -90,6 +140,13 @@ fn main() {
             None => println!("Unrecognized command '{line}' — type ? for help."),
         }
     }
+
+    // Every break above (an explicit quit command or EOF) reaches here;
+    // idempotent with the Ctrl+C handler's own call to the same method.
+    recorder
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .finalize_on_exit();
 }
 
 /// Dispatch `action` through the store; on success, append it to the replay
@@ -131,6 +188,35 @@ fn random_seed() -> u32 {
         .unwrap_or(1);
     // Classic deals are numbered 1..=32000.
     nanos % 32000 + 1
+}
+
+/// `freecell stats`: print the persisted classic FreeCell statistics and
+/// exit, without starting the game loop (issue #11). A versioned
+/// `--json` export is issue #19's job; this is plain text only.
+fn print_stats() {
+    let stats = freecell::stats::default_stats_path()
+        .map(|path| Stats::load_or_default(&path))
+        .unwrap_or_default();
+
+    println!("Games played: {}", stats.games_played());
+    println!("Games won:    {}", stats.games_won());
+    println!("Games lost:   {}", stats.games_lost());
+    println!("Win rate:     {:.1}%", stats.win_percentage());
+    println!(
+        "Current streak: {}",
+        describe_streak(stats.current_streak())
+    );
+    println!("Longest winning streak: {}", stats.longest_winning_streak());
+    println!("Longest losing streak:  {}", stats.longest_losing_streak());
+}
+
+fn describe_streak(streak: freecell::stats::Streak) -> String {
+    use freecell::stats::Streak;
+    match streak {
+        Streak::Winning(n) => format!("{n} game(s) won in a row"),
+        Streak::Losing(n) => format!("{n} game(s) lost in a row"),
+        Streak::None => "none yet".to_string(),
+    }
 }
 
 fn render(store: &Store) {

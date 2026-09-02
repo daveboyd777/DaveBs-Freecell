@@ -89,3 +89,31 @@ fn stats_round_trip_through_json() {
     let restored: Stats = serde_json::from_str(&json).expect("Stats deserializes");
     assert_eq!(stats, restored);
 }
+
+#[test]
+fn stats_save_and_load_round_trip_through_a_real_file() {
+    let mut path = std::env::temp_dir();
+    path.push(format!("freecell_stats_test_{}.json", std::process::id()));
+
+    let mut stats = Stats::default();
+    stats.record(result(1, true, 10));
+    stats.record(result(2, false, 5));
+    stats.save(&path).expect("Stats saves");
+
+    let loaded = Stats::load(&path).expect("Stats loads");
+    assert_eq!(stats, loaded);
+
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn load_or_default_falls_back_to_empty_stats_when_the_file_is_missing() {
+    let mut path = std::env::temp_dir();
+    path.push(format!(
+        "freecell_stats_missing_{}.json",
+        std::process::id()
+    ));
+    std::fs::remove_file(&path).ok(); // make sure it really doesn't exist
+
+    assert_eq!(Stats::load_or_default(&path), Stats::default());
+}
