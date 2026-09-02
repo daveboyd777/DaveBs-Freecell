@@ -22,10 +22,14 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       # eframe/egui (the gui workspace member) link against these on Linux.
+      # libfontconfig1-dev is for plotters' default `ttf` feature (charts,
+      # issue #14), which locates system fonts via fontconfig on Linux --
+      # Windows/macOS use their own native font APIs instead, so this is
+      # Linux-only.
       - name: Install Linux GUI toolkit dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev
+          sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev libfontconfig1-dev
       - name: Check formatting
         run: cargo fmt --all --check
       - name: Lint

@@ -16,6 +16,7 @@
 //! of buttons covers undo/redo/auto-play/restart/new-game instead.
 
 mod board;
+mod charts;
 
 use eframe::egui;
 use egui::{Align2, Color32, FontId, Pos2, Sense, Shape, Stroke, StrokeKind, pos2};
@@ -78,6 +79,14 @@ struct FreecellApp {
     /// closure in `FreecellApp::new`) so `eframe::App::on_exit` can call
     /// `StatsRecorder::finalize_on_exit` when the window closes.
     stats: Rc<RefCell<StatsRecorder>>,
+    /// Whether the statistics charts window (issue #14) is open.
+    show_charts: bool,
+    /// Rendered chart textures, `[win_rate_trend, move_count_distribution]`.
+    /// Regenerated on demand (opening the window, or its own "Refresh"
+    /// button) rather than every frame -- `plotters` rendering is cheap at
+    /// this scale, but there's no reason to redo it 60 times a second for
+    /// data that only changes when a game finishes.
+    chart_textures: Option<[egui::TextureHandle; 2]>,
 }
 
 impl FreecellApp {
@@ -122,6 +131,127 @@ impl FreecellApp {
             status: None,
             seed_input: String::new(),
             stats,
+            show_charts: false,
+            chart_textures: None,
+        }
+    }
+
+    /// Re-render both charts from the current stats and upload them as
+    /// fresh egui textures, replacing any previous ones.
+    fn refresh_chart_textures(&mut self, ctx: &egui::Context) {
+        let stats = self.stats.borrow();
+        let history = stats.stats().history();
+        let win_rate_image = charts::win_rate_trend_image(history);
+        let move_count_image = charts::move_count_distribution_image(history);
+        drop(stats);
+
+        let options = egui::TextureOptions::default();
+        self.chart_textures = Some([
+            ctx.load_texture("win-rate-trend", win_rate_image, options),
+            ctx.load_texture("move-count-distribution", move_count_image, options),
+        ]);
+    }
+
+    /// Save one chart to a file next to `stats.json` (issue #14). Native
+    /// only: there is no OS data directory -- or a sensible place to save
+    /// a file at all -- in a browser sandbox (issue #9).
+    #[cfg(not(target_arch = "wasm32"))]
+    fn export_chart(&mut self, win_rate: bool, png: bool) {
+        let dir = freecell::stats::default_stats_path().and_then(|p| p.parent().map(Into::into));
+        let Some(dir): Option<std::path::PathBuf> = dir else {
+            self.status = Some("Could not determine where to save the chart.".to_string());
+            return;
+        };
+
+        let stats = self.stats.borrow();
+        let history = stats.stats().history();
+        let name = match (win_rate, png) {
+            (true, true) => "win-rate-trend.png",
+            (true, false) => "win-rate-trend.svg",
+            (false, true) => "move-count-distribution.png",
+            (false, false) => "move-count-distribution.svg",
+        };
+        let path = dir.join(name);
+        let result: Result<(), Box<dyn std::error::Error>> = match (win_rate, png) {
+            (true, true) => charts::export_win_rate_trend_png(history, &path),
+            (true, false) => charts::export_win_rate_trend_svg(history, &path),
+            (false, true) => charts::export_move_count_distribution_png(history, &path),
+            (false, false) => charts::export_move_count_distribution_svg(history, &path),
+        };
+        drop(stats);
+
+        self.status = Some(match result {
+            Ok(()) => format!("Saved {}", path.display()),
+            Err(e) => format!("Failed to save {name}: {e}"),
+        });
+    }
+
+    /// The statistics charts window (issue #14): win-rate trend and
+    /// move-count distribution, plus native-only PNG/SVG export. Button
+    /// clicks are collected while the window's closure only *reads*
+    /// `self.chart_textures`, then acted on afterward, to avoid borrowing
+    /// `self` both immutably (for the images) and mutably (to export or
+    /// refresh) at once.
+    fn draw_charts_window(&mut self, ctx: &egui::Context) {
+        if !self.show_charts {
+            return;
+        }
+
+        let mut open = true;
+        let mut refresh_clicked = false;
+        #[cfg(not(target_arch = "wasm32"))]
+        let mut export_clicked: Option<(bool, bool)> = None;
+
+        egui::Window::new("Statistics Charts")
+            .open(&mut open)
+            .resizable(true)
+            .show(ctx, |ui| {
+                if ui.button("Refresh").clicked() {
+                    refresh_clicked = true;
+                }
+                match &self.chart_textures {
+                    Some(textures) => {
+                        ui.label("Win Rate Trend");
+                        ui.image(&textures[0]);
+                        #[cfg(not(target_arch = "wasm32"))]
+                        ui.horizontal(|ui| {
+                            if ui.button("Export PNG").clicked() {
+                                export_clicked = Some((true, true));
+                            }
+                            if ui.button("Export SVG").clicked() {
+                                export_clicked = Some((true, false));
+                            }
+                        });
+
+                        ui.separator();
+
+                        ui.label("Move-Count Distribution");
+                        ui.image(&textures[1]);
+                        #[cfg(not(target_arch = "wasm32"))]
+                        ui.horizontal(|ui| {
+                            if ui.button("Export PNG").clicked() {
+                                export_clicked = Some((false, true));
+                            }
+                            if ui.button("Export SVG").clicked() {
+                                export_clicked = Some((false, false));
+                            }
+                        });
+                    }
+                    None => {
+                        ui.label("No chart data yet.");
+                    }
+                }
+            });
+
+        self.show_charts = open;
+        if !open {
+            self.chart_textures = None; // release the textures once closed
+        } else if refresh_clicked {
+            self.refresh_chart_textures(ctx);
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some((win_rate, png)) = export_clicked {
+            self.export_chart(win_rate, png);
         }
     }
 
@@ -194,6 +324,14 @@ impl FreecellApp {
             {
                 let report = freecell::analysis::grade(self.store.game());
                 self.status = Some(describe_report(&report));
+            }
+            if ui.button("Charts").clicked() {
+                self.show_charts = !self.show_charts;
+                if self.show_charts {
+                    self.refresh_chart_textures(ui.ctx());
+                } else {
+                    self.chart_textures = None;
+                }
             }
             ui.separator();
             ui.label("Seed:");
@@ -610,6 +748,7 @@ impl eframe::App for FreecellApp {
             ui.separator();
             self.draw_board(ui);
         });
+        self.draw_charts_window(ui.ctx());
     }
 
     /// Closes issue #11's quit-detection gap for the GUI: record the
