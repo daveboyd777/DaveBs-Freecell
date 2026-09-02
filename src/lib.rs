@@ -5,6 +5,7 @@
 
 use std::fmt;
 
+pub mod solver;
 pub mod stats;
 pub mod store;
 pub use store::Store;
