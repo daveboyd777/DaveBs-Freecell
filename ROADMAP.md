@@ -208,7 +208,10 @@ Already in place from this commit:
   and uploads an lcov report to Codecov, which renders the README badge
   -- `fail_ci_if_error: false`, so this never blocks CI even before the
   repo is activated on codecov.io
+- **Dependabot auto-merge** (#17): `.github/workflows/dependabot-auto-merge.yml`
+  enables GitHub's native auto-merge on a Dependabot PR once it's a
+  patch-level bump (`dependabot/fetch-metadata`'s `update-type`); GitHub
+  still waits for CI to go green before actually merging it. Minor/major
+  bumps are left for manual review.
 
-Planned:
-
-- Auto-merge for green patch-level Dependabot PRs
+**Phase 4 is now complete.**

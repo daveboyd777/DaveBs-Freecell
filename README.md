@@ -153,7 +153,8 @@ modules tracking the classic FreeCell stats.
 - **Release workflow** builds and publishes Windows/macOS/Linux binaries to
   GitHub Releases on every `v*` tag.
 - **Dependabot** watches Cargo dependencies and the CI workflow itself,
-  opening automatic update pull requests weekly.
+  opening automatic update pull requests weekly; green patch-level updates
+  auto-merge on their own once CI passes.
 - **CodeRabbit** (AI code review, free for open-source) reviews every pull
   request — configuration in [`.coderabbit.yaml`](.coderabbit.yaml).
 
