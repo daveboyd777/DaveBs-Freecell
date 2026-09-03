@@ -144,6 +144,12 @@ See [ROADMAP.md](ROADMAP.md) for the continuous-improvement plan: Redux-style
 state management, a richer visual interface, and self-analysis / statistics
 modules tracking the classic FreeCell stats.
 
+## Design papers
+
+For in-depth write-ups of *why* specific parts are designed the way they
+are (not just what they do), see [docs/papers/](docs/papers/README.md):
+engine/architecture, and hint/solver design.
+
 ## Maintenance automation
 
 - **GitHub Actions CI** builds, lints, and runs the full test suite on every
