@@ -126,6 +126,32 @@ dashboard/            static JS/D3 web stats dashboard, deployed alongside
 because their dependencies don't coexist cleanly in one crate -- see the
 comment at the top of the root `Cargo.toml`.
 
+### Android (local debug build only)
+
+`gui/` doubles as a `cdylib` with its own `android_main` entry point
+(`gui/src/lib.rs`), so the exact same app can also be packaged as a
+sideload-only Android debug APK -- not published to any app store, and not
+built by CI. To reproduce locally:
+
+```sh
+rustup target add aarch64-linux-android
+cargo install cargo-apk
+# Requires a JDK, and an Android SDK with platform-tools, platforms;android-34,
+# build-tools;34.0.0, and ndk;27.0.12077973 (or compatible versions) installed,
+# with ANDROID_HOME/ANDROID_NDK_HOME pointing at them.
+cd gui
+cargo apk build --lib   # --lib: this crate also has a native/wasm binary target,
+                        # which cargo-apk otherwise gets confused trying to package too
+```
+
+The signed APK lands at `target/debug/apk/freecell_gui.apk`; install it with
+`adb install` or `cargo apk run --lib` on a connected device/emulator. The
+statistics charts window isn't available on this target -- `plotters`'
+font rendering has no Android backend -- everything else (the board, moves,
+hints, undo/redo) works the same as the desktop build, except stats don't
+persist between runs (no OS data directory in this sandboxed environment,
+the same graceful fallback the WASM build already uses).
+
 ## Web stats dashboard
 
 The classic FreeCell stats (win rate, streaks, per-deal history) are also
