@@ -1,6 +1,7 @@
 # DaveB's Freecell
 
 [![CI](https://github.com/daveboyd777/DaveBs-Freecell/actions/workflows/ci.yml/badge.svg)](https://github.com/daveboyd777/DaveBs-Freecell/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/daveboyd777/DaveBs-Freecell/graph/badge.svg)](https://codecov.io/gh/daveboyd777/DaveBs-Freecell)
 
 A faithful FreeCell card game for the terminal, written in Rust and built
 test-first. Deals are bit-compatible with the classic Microsoft FreeCell
@@ -103,6 +104,7 @@ cargo fmt --all --check     # formatting, whole workspace
 cargo clippy --workspace --all-targets -- -D warnings   # lints, whole workspace
 cargo test --workspace      # tests, whole workspace (incl. tui/gui once they have any)
 node --test dashboard/*.test.mjs   # web dashboard's pure data-transform tests
+cargo llvm-cov --workspace --open   # coverage report (needs cargo-llvm-cov)
 ```
 
 Project layout (a Cargo workspace):
@@ -145,6 +147,11 @@ modules tracking the classic FreeCell stats.
 
 - **GitHub Actions CI** builds, lints, and runs the full test suite on every
   push and pull request.
+- **Code coverage** (cargo-llvm-cov, badge above) uploads to
+  [Codecov](https://codecov.io/gh/daveboyd777/DaveBs-Freecell) on every push
+  and pull request.
+- **Release workflow** builds and publishes Windows/macOS/Linux binaries to
+  GitHub Releases on every `v*` tag.
 - **Dependabot** watches Cargo dependencies and the CI workflow itself,
   opening automatic update pull requests weekly.
 - **CodeRabbit** (AI code review, free for open-source) reviews every pull
