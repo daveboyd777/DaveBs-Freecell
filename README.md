@@ -116,10 +116,14 @@ src/lib.rs            game engine (no I/O)
 src/store.rs          Store: dispatches Action, notifies subscribers
 src/main.rs           text CLI (dispatches Action through a Store)
 tests/                engine, reducer, and Store test suites
-tui/                  ratatui terminal UI (freecell-tui) -- WIP, Phase 2
-gui/                  egui/eframe desktop + WASM UI (freecell-gui) -- WIP, Phase 2
+tui/                  ratatui terminal UI (freecell-tui)
+gui/                  egui/eframe desktop + WASM + Android UI (freecell-gui);
+                      src/lib.rs holds the app, src/main.rs is a thin
+                      native/wasm entry point (see "Android" below)
 dashboard/            static JS/D3 web stats dashboard, deployed alongside
                       the WASM build to GitHub Pages at /dashboard/
+docs/papers/          in-depth design papers; docs/podcast-script.md is a
+                      podcast-style transcript about the project
 ```
 
 `tui/` and `gui/` are separate workspace members (not features of `freecell`)
