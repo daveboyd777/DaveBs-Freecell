@@ -181,10 +181,12 @@ are (not just what they do), see [docs/papers/](docs/papers/README.md):
 engine/architecture, hint/solver design, and a design-notes survey of
 FreeCell solution strategies.
 
-There's also a [podcast-style script](docs/podcast-script.md) about the
-project -- a conversational transcript you can feed into any
-text-to-speech or AI podcast-generation tool of your choice to get an
-audio overview.
+There's also a [video script](docs/podcast-script.md) about the project,
+styled as a *Thin Man* pastiche (Nick, Nora, and their dog Asta) --
+complete with generation directions for animating Nick from a Dave Boyd
+photo with a voice clone of Dave Boyd's own voice, and Nora from a Myrna
+Loy lookalike. A plain two-host cut for a straight audio podcast is
+included as an appendix.
 
 ## Maintenance automation
 

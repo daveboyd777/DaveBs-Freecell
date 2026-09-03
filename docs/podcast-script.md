@@ -1,224 +1,317 @@
-# DaveB's Freecell: A Deep Dive — Podcast Script
+# DaveB's Freecell: A "Thin Man" Style Video Script
 
-A conversational, two-host script about this project, written to be fed
-into any text-to-speech or AI podcast-generation tool of your choice
-(NotebookLM-style "audio overview" tools, ElevenLabs, etc.). It's not
-generated audio itself — just the script.
+A script for a short explainer video about this project, styled as a
+pastiche of the 1934 film *The Thin Man*: **Nick Charles** (the
+technical half of the pair, dry wit, explains the project) and **Nora
+Charles** (the curious half, asks the questions), with their wire fox
+terrier **Asta** as a silent, recurring visual gag. It's a script plus
+*generation directions* — not generated media itself. You supply a
+photo and a voice recording; you pick the actual voice-cloning and
+photo-animation tools (see "Generation pipeline" below) and run them
+yourself, the same way the [original plain cut](#appendix-plain-two-host-cut)
+at the end of this file was meant to be fed into a TTS/podcast tool of
+your choice.
 
-Two voices: **A** (curious host, asks the questions) and **B** (technical
-host, explains the project). Runs roughly 12-15 minutes read aloud.
+## Cast and likeness plan
+
+| Character | Likeness source | Voice source |
+|---|---|---|
+| **Nick** | An actual photo of **Dave Boyd**, animated | **Voice-cloned from a Dave Boyd recording** (see "Generation pipeline" step 1 below) — Nick speaks in Dave's own synthesized voice |
+| **Nora** | A **Myrna Loy lookalike** photo (a real person who resembles her, not an attempt to recreate the actress's own likeness) | An off-the-shelf TTS voice (warm, dry-witted delivery) — there's no Nora voice recording to clone from, so this is the one asymmetry in fidelity unless you record a second voice sample |
+| **Asta** | Stock footage or a brief text-to-video/photo-animation clip of a wire fox terrier | None (silent reaction shots only) |
+
+**A note on likeness rights:** Nick's likeness and voice are your own
+(Dave Boyd), so there's no third-party consent question there. If you
+source a real person's photo for the Nora lookalike, get their
+permission to use their image before animating it. This is styled as an
+*homage/pastiche* to a classic film archetype, not a claim to be footage
+of the real William Powell or Myrna Loy — keep any credits/description
+on the finished video honest about that (e.g., "styled after the Thin
+Man films," not "starring William Powell").
+
+## Generation pipeline
+
+This is tool-agnostic on purpose — pick whichever voice-cloning and
+photo-animation services you're comfortable with; the steps are the
+same shape regardless of vendor:
+
+1. **Record the voice sample.** Read the paragraph marked
+   **"RECORD THIS FOR VOICE CLONING"** below aloud, once cleanly, in a
+   quiet room — most voice-cloning tools want 30-60+ seconds of a
+   single, uninterrupted voice with minimal background noise. This
+   becomes the reference clip for cloning Nick's voice.
+2. **Clone the voice.** Feed that recording into a voice-cloning
+   service to produce a synthetic voice model of Dave Boyd's voice, then
+   synthesize *all* of Nick's lines below (not just the sample
+   paragraph) through that cloned voice.
+3. **Pick or generate Nora's voice.** A stock TTS voice with a warm,
+   knowing delivery works fine; there's no lookalike voice recording to
+   clone from here.
+4. **Animate the two stills.** Feed the Dave Boyd photo plus Nick's
+   synthesized audio track into a "talking photo" / photo-to-video
+   lip-sync tool to animate Nick; do the same with the Myrna Loy
+   lookalike photo and Nora's synthesized audio. Most such tools take a
+   still image plus an audio track and output a lip-synced talking-head
+   clip.
+5. **Style pass (optional but recommended).** Run both talking-head
+   clips through a black-and-white / film-grain style filter to match
+   the 1930s *Thin Man* look, rather than leaving them in plain color.
+6. **Get Asta.** Source a short stock clip (or a quick text-to-video
+   generation) of a wire fox terrier for the `[ASTA REACT]` cutaway
+   beats marked in the script.
+7. **Assemble.** Cut the two talking-head tracks together per the scene
+   directions below, inserting the Asta cutaways and the B-roll
+   screenshots (the actual game/dashboard) at the marked points, in any
+   ordinary video editor.
+
+## Scene setting
+
+A 1930s apartment study: a card table with a FreeCell deal laid out, a
+decanter and two glasses, Asta curled up by the table leg. Static
+talking-head coverage of NICK and NORA is enough for the whole runtime;
+cut to B-roll (the terminal, the desktop GUI, the web dashboard) at the
+marked points instead of trying to stage anything more elaborate.
 
 ---
 
-**A:** Okay, so today we're talking about a FreeCell implementation. Just
-FreeCell — the solitaire card game. Why does that need a whole episode?
+**[NICK, seated at the card table, gives the spread a sardonic once-over]**
 
-**B:** Because this one isn't just "deal cards, click cards." It's a
-FreeCell game built in Rust, test-first, that grew into three different
-user interfaces, a whole statistics and self-analysis system, a
-from-scratch solver, and even a web dashboard written in JavaScript. And
-every single one of those pieces shares the exact same game engine — no
-duplicated rules anywhere.
+**NORA:** Darling, everyone's asking — why on earth does a game of
+solitaire need its own documentary?
 
-**A:** Let's start at the beginning. What's the actual core of it?
+**NICK:** Because, angel, this isn't *just* solitaire. It's a FreeCell
+game built in Rust, test-first, that grew into three different user
+interfaces, a full statistics and self-analysis system, a solver built
+from scratch, and a web dashboard written in JavaScript. Every last
+piece of it shares one game engine. No duplicated rules anywhere — I
+checked.
 
-**B:** The engine. It's a pure Rust library with zero I/O — no printing,
-no file access, nothing. Just data and functions. The board state —
-cascades, free cells, foundations — is one plain struct called
-`GameState`. And here's the interesting architectural choice: it's built
-Redux-style.
+**NORA:** You always did like things tidy. Where does one even start
+with a thing like that?
 
-**A:** Redux, like the JavaScript state management library?
+**> RECORD THIS FOR VOICE CLONING (read this paragraph aloud once, cleanly, for the voice sample):**
 
-**B:** Same idea, different language. Every possible way the game can
-change — moving a card, undoing, auto-playing to the foundations,
-dealing a new game — is represented as one value in an `Action` enum.
-And there's a single `reduce` function: you give it a state and an
-action, it gives you back a new state. No mutation, no side effects.
+**NICK:** With the engine, dear — that's the heart of the whole affair.
+It's a pure Rust library with no I/O at all: no printing, no file
+access, nothing but data and functions. The board — the cascades, the
+free cells, the foundations — is one plain structure called
+`GameState`. And here's the interesting part: the whole thing is built
+Redux-style, the way modern JavaScript applications manage state. Every
+way the game can change — moving a card, undoing a move, auto-playing
+to the foundations, dealing a fresh hand — is just one value in an
+action list. One function takes a state and an action and hands you
+back a new state. No mutation, no surprises, no side effects to speak
+of.
 
-**A:** Why go to that trouble for a card game?
+**[ASTA REACT: a single, unimpressed glance up at Nick, then back to sleep]**
 
-**B:** Because it makes everything else fall out for free. Undo and redo
-are just stacks of past and future states. And here's the fun part — a
-game is *completely* described by two things: the seed it was dealt
-from, and the list of actions played. That's it. So there's a `replay`
-function that takes a seed and a list of actions and reconstructs the
-exact game. Every single time this project's UI detects a win, it
-actually replays the whole game from scratch and checks that it
-reproduces the exact win — as a runtime proof, not just a test that
-might bit-rot.
+**NORA:** Redux. In a card game. You *do* know how to charm a girl.
 
-**A:** That's a nice sanity check to have running live.
+**NICK:** It pays off, though. Undo and redo fall right out of it — just
+stacks of past and future states. And a whole game is *completely*
+described by two things: the seed it was dealt from, and the list of
+moves played. Nothing else. So there's a function that takes a seed and
+a move list and rebuilds the exact game from scratch. Every time this
+thing detects a win, it actually replays the entire game and confirms
+it reproduces that exact win — a running proof, not a test that quietly
+rusts.
 
-**B:** It's also what makes the whole multi-UI story work. There's a
-terminal UI, a desktop GUI, a browser version compiled to WebAssembly,
-and — most recently — an Android build. All four call the exact same
-`reduce` function. None of them know a single rule of FreeCell. A
-supermove capacity formula, alternating colors, all of that logic lives
-in exactly one place.
+**NORA:** And that's the trick behind all these different faces it
+wears?
 
-**A:** Let's talk about statistics, because I saw this thing tracks a
-lot more than "did you win."
+**NICK:** Precisely. A terminal version, a desktop application, a
+browser version compiled to WebAssembly, and — as of recently — an
+Android build. Four of them, and not one knows a single rule of
+FreeCell on its own. The supermove math, the alternating colors, all of
+it lives in exactly one place.
 
-**B:** Right, so there's a `stats` module that's just a plain list of
-game results plus some pure math over it — win percentage, current
-streak, longest winning and losing streaks, that sort of thing. But how
-it *gets* that data is the elegant part: it's a "subscriber" to the
-Redux store. Every time an action successfully goes through, the stats
-module gets a notification with the resulting state and the action that
-caused it. It doesn't need any special hook into the game logic at all.
+**[CUT TO: screenshot/recording of the terminal CLI dealing a hand]**
 
-**A:** So adding a new UI would automatically feed stats too?
+**NORA:** Let's talk statistics, Nicky. I hear this thing keeps rather
+better records than you do.
 
-**B:** Exactly — and that's already proven three times over, because all
-three live UIs share it. It even handles the annoying edge case of
-someone just quitting mid-game without finishing — Ctrl+C, closing the
-window, whatever — and still records that as a loss.
+**NICK:** *(a dry look)* There's a `stats` module — a plain list of
+game results plus some arithmetic over it: win percentage, current
+streak, longest winning and losing runs. The clever bit is how it
+*gets* that data: it simply subscribes to the Redux store. Every time a
+move goes through successfully, the stats module hears about it. It
+needs no special hook into the rules at all.
 
-**A:** Now, the part I'm most curious about: you said there's a solver.
-Doesn't that mean the computer can... solve FreeCell for you?
+**NORA:** So any new interface gets the bookkeeping for free?
 
-**B:** It can tell you whether a position is *still winnable*, and if so,
-give you a full winning line. It's a depth-first search with a
-transposition table — meaning it remembers every position it's already
-explored so it never wastes time re-exploring the same board reached by
-a different order of moves. And there's a classic FreeCell trick baked
-in: a "safe autoplay" rule that sends cards to the foundation early
-whenever it's mathematically guaranteed to never hurt you.
+**NICK:** Proven three times over, my dear — all three interfaces share
+it. It even catches the case of someone simply walking away mid-hand —
+closing the window, cutting the lights — and still marks it down as a
+loss. No slipping out unnoticed.
 
-**A:** How fast is it? FreeCell's supposed to be really hard to solve in
-general.
+**NORA:** Now — the part I actually want to hear about. You mentioned a
+*solver*. Are you telling me the machine plays the hand for you?
 
-**B:** It genuinely is — there's a famous case, deal number 11982 in the
-classic Microsoft numbering, that's provably unsolvable, and this solver
-proves that in about seven and a half seconds on an unoptimized debug
-build. Most positions resolve dramatically faster.
+**NICK:** It tells you whether a position can *still* be won, and if
+so, shows you the whole winning line. A depth-first search with a
+transposition table — it remembers every position it's already
+explored, so it never wastes a moment re-exploring the same board
+reached by a different order of moves. And there's a classic FreeCell
+trick built in: a "safe autoplay" rule that sends a card home the
+instant doing so can never possibly hurt you later.
 
-**A:** And this powers the hint button?
+**NORA:** How fast is "fast," exactly? I understood this game to be
+fiendish.
 
-**B:** It does, with a twist. Hints use a much smaller search budget than
-a full solve — tuned down specifically so it stays responsive during
-play instead of freezing the UI for several seconds. If the small
-budget can't find an answer, it just honestly says "no hint available"
-rather than pretending the position is unsolvable.
+**NICK:** It is. There's a famous hand — number 11982 in the old
+Microsoft numbering — proven mathematically unwinnable. This solver
+proves that in about seven and a half seconds, on a slow build no less.
+Most hands resolve considerably quicker.
 
-**A:** That honesty thing seems important.
+**[ASTA REACT: ears perk up at "fiendish," then settle back down]**
 
-**B:** It's actually a whole design principle here. The solver has three
-possible answers, not two: solvable, unsolvable, or *unknown* — meaning
-"I didn't search deep enough to be sure." Every piece of code that uses
-the solver is required to handle "unknown" as its own real case. Get
-that wrong and you'd tell a player their game is dead when it might
-still be winnable.
+**NORA:** And that little "hint" button — is that the same machinery?
 
-**A:** You mentioned a post-game report earlier too.
+**NICK:** The same machinery, on a shorter leash. Hints use a much
+smaller search budget, tuned down so it stays responsive during actual
+play instead of freezing everything for several seconds. If that
+smaller budget comes up empty, it says so plainly — "no hint
+available" — rather than pretending the hand is lost.
 
-**B:** Right, this is one of my favorite pieces of the whole project.
-When a game ends — or even if you just abandon it — there's a "grade"
-function that tells you exactly where things went wrong. Not just
-"you lost," but the specific move number where the position stopped
+**NORA:** That honesty seems almost out of character for you.
+
+**NICK:** *(raising a glass)* Wound me. But it matters — the solver
+gives three honest answers, not two: solvable, unsolvable, or
+*unknown*, meaning it simply didn't search deep enough to be certain.
+Every piece of code touching it has to handle "unknown" as its own
+real case. Get that wrong, and you'd tell a player their hand is dead
+when it might still be very much alive.
+
+**NORA:** You mentioned some sort of report card, too.
+
+**NICK:** One of my favorite bits, if I'm honest. When a hand ends — or
+even when it's simply abandoned — there's a function that grades it:
+not merely "you lost," but the *exact* move where the position stopped
 being winnable.
 
-**A:** How do you even figure that out without solving every single
-position in the game?
+**NORA:** However do you work that out without solving every single
+position along the way?
 
-**B:** This is the elegant bit. There's a mathematical property here:
-along one continuous real game, once a position becomes unsolvable, it
-*stays* unsolvable for the rest of that game. It can never flip back to
-solvable. Which means you can binary-search for the exact turning
-point instead of checking every move one at a time. For a sixty-move
-game, that's the difference between roughly sixty solver calls and
-about six.
+**NICK:** Here's the elegant part, angel. Along any one real game,
+once a position turns unwinnable, it *stays* unwinnable for the rest of
+that game — it can never flip back. Which means you can binary-search
+for the exact turning point instead of checking every move in
+sequence. On a sixty-move game, that's the difference between roughly
+sixty checks and about six.
 
-**A:** That's a nice bit of applied math for a card game.
+**NORA:** *(a small, genuine smile)* That's rather elegant, for a card
+game.
 
-**B:** It's the kind of thing that only shows up when you actually sit
-down and think about what "solvable" means over a sequence of real
-moves, rather than just brute-forcing it.
+**NICK:** It's the sort of thing that only turns up when you actually
+sit and think about what "still winnable" means over a real sequence of
+moves, rather than brute-forcing the question.
 
-**A:** Let's shift to visualization, because I know there are actual
-charts involved now.
+**[CUT TO: screen recording of the desktop GUI's Hint/Report buttons in use]**
 
-**B:** Two tracks, deliberately. Track A is in-app — charts drawn with a
-Rust charting library, embedded directly in the desktop and web builds:
-a win-rate trend over time, and a histogram of how many moves your games
-tend to take, broken down by wins and losses.
+**NORA:** Let's talk pictures — I understand there are actual charts
+involved these days.
 
-**A:** And track B?
+**NICK:** Two tracks, quite deliberately. One lives in the application
+itself — charts drawn with a Rust charting library, right inside the
+desktop and browser builds: a win-rate trend over time, and a
+breakdown of how many moves your games tend to run, split by wins and
+losses.
 
-**B:** Track B is a completely separate web dashboard, written in plain
-JavaScript with D3 — no build tooling, no npm install, just static
-files. It reads the exact same JSON export the Rust side produces. You
-can hover a point on the win-rate chart to see which specific deal it
-was, and click it to reopen the game pre-loaded on that exact numbered
+**NORA:** And the second?
+
+**NICK:** An entirely separate web dashboard, written in plain
+JavaScript with D3 — no build tools, no installation step, just static
+files sitting on a server. It reads the very same exported data the
+Rust side produces. Hover a point on the win-rate chart and it'll tell
+you which hand it was; click it, and it reopens that exact numbered
 deal for a rematch.
 
-**A:** Why bother with two separate implementations of similar charts?
+**NORA:** Why bother building the same chart twice, in two different
+languages, darling?
 
-**B:** Because of a strict rule that keeps the whole thing safe: all
-*computation* stays in Rust. The JSON schema is versioned and tested —
-changing its shape is treated like a breaking API change, not a casual
-edit. JavaScript is only ever allowed to render what's already computed,
-never calculate a new statistic of its own. That means either
-rendering track could be deleted and rewritten in a totally different
-language tomorrow without touching a single line of game logic.
+**NICK:** Because of one strict house rule: *all* the arithmetic stays
+in Rust. The data format is versioned and tested — changing its shape
+is treated like a real breaking change, never a casual edit. JavaScript
+is only ever permitted to *render* what's already been calculated,
+never to calculate anything new itself. Which means either one of
+those two renderers could be torn out and rebuilt in an entirely
+different language tomorrow, without touching a line of the actual
+game logic.
 
-**A:** Real quick — you said replay links open "the exact numbered
-deal." Is that the same as replaying the exact game you actually
-played?
+**NORA:** One more thing — you said clicking a chart point reopens
+"that exact numbered deal." Is that the very game I played, replayed?
 
-**B:** Good catch, and it's worth being precise about it: no. The
-persisted history only stores the deal number, whether you won, and how
-many moves it took — not the full move-by-move log. So a "replay" link
-deals that same numbered game fresh, rather than replaying your exact
-recorded sequence of moves. Since a deal number completely determines
-the starting layout, it's still the same puzzle — just not a literal
-instant-replay of your specific playthrough.
+**NICK:** *(honest, no dodge)* No, and it's worth being precise about
+it. What's kept on record is only the deal number, whether it was won,
+and how many moves it took — not the full move-by-move log. So a
+"replay" link deals that same numbered hand fresh, rather than
+replaying your exact recorded moves. Since the deal number alone
+determines the starting layout, it's still the identical puzzle — just
+not a literal instant-replay of your particular playthrough.
 
-**A:** Fair enough. So what does the finished product actually look
-like, end to end?
+**[CUT TO: browser recording of the web dashboard — hover, then click, a chart point]**
 
-**B:** A text CLI for the terminal purists, a ratatui terminal UI with
-mouse support and colored suits, a full desktop GUI built with egui —
-complete with hand-drawn vector suit symbols, not font glyphs — a
-browser version compiled straight to WebAssembly and deployed to GitHub
-Pages, and as of very recently, a locally-buildable Android debug APK
-using that exact same GUI code, just packaged differently for a phone.
+**NORA:** So — soup to nuts, darling, what does the finished article
+actually look like?
 
-**A:** All from the one engine.
+**NICK:** A text interface, for the purists. A full terminal
+application with mouse support and properly colored suits. A desktop
+application with hand-drawn vector suit symbols — not font characters
+dressed up to look like cards. A browser version compiled straight to
+WebAssembly. And, most recently, a locally-built Android package, using
+that very same desktop code, simply dressed for a telephone.
 
-**B:** All from the one engine. Continuous integration runs formatting
-checks, lints, and the full test suite on every change, plus code
-coverage reporting. There's a release workflow that packages binaries
-for Windows, macOS, and Linux and publishes them to GitHub Releases
-automatically whenever a version tag goes out. And Dependabot keeps
-dependencies current, with routine patch-level updates merging
-themselves automatically once tests pass.
+**NORA:** All from the one engine.
 
-**A:** It's a lot of engineering for a card game.
+**NICK:** All from the one engine. Continuous testing runs formatting
+checks, linting, and the full test suite on every single change, plus
+coverage reporting. A release process packages binaries for three
+operating systems and posts them the moment a version is tagged. And
+the dependency-watching runs on its own, merging the small, safe
+updates automatically once the tests pass.
 
-**B:** That's sort of the point, honestly — FreeCell is simple enough to
-hold in your head completely, which makes it a great space to actually
-practice good architecture without the domain complexity getting in the
-way. Every one of these systems — the solver, the stats, the two
-visualization tracks — is small enough to reason about on its own, and
-that's exactly why it was possible to keep adding to it without anything
-breaking.
+**NORA:** That's rather a lot of engineering for a game of solitaire,
+Nicky.
 
-**A:** Where would this go next?
+**NICK:** That's rather the point, my dear. FreeCell is simple enough
+to hold entirely in one's head, which makes it an ideal place to
+practice good architecture without the subject matter getting in the
+way. The solver, the statistics, the two picture-drawing tracks — each
+one small enough to reason about on its own. Which is exactly why it
+was possible to keep building on top of it without anything coming
+apart at the seams.
 
-**B:** There's a design-notes paper alongside this script that dives
-into FreeCell solving strategies specifically — the patterns a solver
-or a skilled player actually uses under the hood. Beyond that, the
-natural next steps are things like solver-backed grading for entire
-historical game libraries, or new UIs that plug into the same engine
-the exact same way the existing four already do.
+**NORA:** Wherever does one go from here?
 
-**A:** Well, that's DaveB's Freecell. Same fifty-two cards everyone
-knows, a lot more going on underneath than you'd expect.
+**NICK:** There's a set of notes alongside this script on FreeCell
+strategy itself — the patterns a solver, or a rather good player, falls
+into without necessarily naming them. Beyond that, the natural next
+steps are things like solver-backed grading across an entire history of
+games, or new interfaces plugging into the same engine the same
+effortless way these four already do.
 
-**B:** Every column laid out and dealt to prove it.
+**NORA:** Well. That's DaveB's Freecell, everyone. The same fifty-two
+cards you've always known —
+
+**NICK:** — with rather more going on underneath than you'd expect.
+
+**[ASTA REACT: sits up, tail wagging, as if on cue]**
+
+**NORA:** *(to Asta)* Every column laid out and dealt, to prove it.
+
+**[FADE OUT]**
 
 ---
+
+## Appendix: plain two-host cut
+
+If you'd rather generate a plain audio-only "podcast" (feeding this
+into a NotebookLM-style audio-overview tool, for instance) instead of a
+styled video, strip the character names/production directions above and
+read it as two generic hosts, **A** (curious) and **B** (technical) —
+line-for-line the same content, just delivered straight rather than in
+character. The dialogue above works either way; the "Cast and likeness
+plan" and "Generation pipeline" sections only apply to the styled video
+version.
 
 *(End of script.)*
