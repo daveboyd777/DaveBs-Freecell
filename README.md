@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/daveboyd777/DaveBs-Freecell/actions/workflows/ci.yml/badge.svg)](https://github.com/daveboyd777/DaveBs-Freecell/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/daveboyd777/DaveBs-Freecell/graph/badge.svg)](https://codecov.io/gh/daveboyd777/DaveBs-Freecell)
+[![Latest Release](https://img.shields.io/github/v/release/daveboyd777/DaveBs-Freecell)](https://github.com/daveboyd777/DaveBs-Freecell/releases/latest)
 
 A faithful FreeCell card game for the terminal, written in Rust and built
 test-first. Deals are bit-compatible with the classic Microsoft FreeCell
