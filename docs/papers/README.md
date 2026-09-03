@@ -13,6 +13,8 @@ this way" view of each area.
   why hints and post-game grading are synchronous and on-demand, and the
   monotonicity property that makes "where did it go wrong" a binary
   search instead of a linear scan.
-
-More papers are planned; see the repository's active discussion for
-scope on a statistical study of FreeCell solution strategies.
+- [FreeCell Solution Strategies](solution-strategies.md) -- a
+  design-notes survey of solving strategies (safe autoplay, free
+  cell/empty column tradeoffs, foundation timing, cascade excavation
+  order, run construction), how the solver's own optimizations map onto
+  them, and what a real data-driven study of this would require.
