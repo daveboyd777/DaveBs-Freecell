@@ -46,6 +46,40 @@ jobs:
       - name: Test web dashboard
         run: node --test dashboard/*.test.mjs
 
+  # Code coverage (issue #16): cargo-llvm-cov instruments the same
+  # `cargo test --workspace` the check job runs and uploads the result to
+  # Codecov, which renders the README badge. `fail_ci_if_error: false`
+  # means a Codecov hiccup (or the repo not being activated on
+  # codecov.io yet -- see https://codecov.io/gh/daveboyd777/DaveBs-Freecell
+  # -- itself a one-time, no-code step) never fails this job or blocks a
+  # PR; it only affects whether the badge/report updates.
+  coverage:
+    name: Code coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+      # Same Linux-only native deps the "Format, lint, and test" job
+      # installs, needed to build/test the gui/tui workspace members here.
+      - name: Install Linux GUI toolkit dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev libfontconfig1-dev
+      - name: Generate coverage
+        run: cargo llvm-cov --workspace --lcov --output-path lcov.info
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: lcov.info
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
   build-windows:
     name: Build (Windows)
     runs-on: windows-latest

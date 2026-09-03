@@ -204,8 +204,11 @@ Already in place from this commit:
   and Linux, packages each platform into an archive with the README and
   LICENSE, and publishes them all to a GitHub Release --
   `.github/workflows/release.yml`, giving the README a real download link
+- **Code coverage** (#16): `cargo-llvm-cov` runs alongside the rest of CI
+  and uploads an lcov report to Codecov, which renders the README badge
+  -- `fail_ci_if_error: false`, so this never blocks CI even before the
+  repo is activated on codecov.io
 
 Planned:
 
-- Code coverage reporting (cargo-llvm-cov) with a badge
 - Auto-merge for green patch-level Dependabot PRs
