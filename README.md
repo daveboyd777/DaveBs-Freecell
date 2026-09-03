@@ -174,7 +174,13 @@ modules tracking the classic FreeCell stats.
 
 For in-depth write-ups of *why* specific parts are designed the way they
 are (not just what they do), see [docs/papers/](docs/papers/README.md):
-engine/architecture, and hint/solver design.
+engine/architecture, hint/solver design, and a design-notes survey of
+FreeCell solution strategies.
+
+There's also a [podcast-style script](docs/podcast-script.md) about the
+project -- a conversational transcript you can feed into any
+text-to-speech or AI podcast-generation tool of your choice to get an
+audio overview.
 
 ## Maintenance automation
 
