@@ -3,15 +3,39 @@ name = "freecell-gui"
 version = "0.1.0"
 edition = "2024"
 
+# `main.rs` (native/wasm) stays the default binary target (auto-detected by
+# Cargo); `lib.rs` is additionally built as a `cdylib` for the Android
+# build, which needs a shared library with an `android_main` symbol rather
+# than a plain executable -- `cargo apk build` builds this target, not the
+# binary. `rlib` keeps normal `cargo build`/`cargo test` working for the
+# lib as before.
+[lib]
+name = "freecell_gui"
+crate-type = ["cdylib", "rlib"]
+
+# cargo-apk reads this to generate AndroidManifest.xml, via `#[serde(flatten)]`
+# onto `ndk_build::manifest::AndroidManifest` -- so table/field names here
+# must match that struct exactly (`sdk`/`application` subtables, not e.g. a
+# flat `min_sdk_version`), not the more common `apk_label`-style keys used
+# by some other cargo-apk-adjacent tools. A locally-buildable, sideload-only
+# debug APK (`cargo apk build`, then `cargo apk run`, or installing the
+# resulting APK from target/debug/apk/ by hand) -- not published to any app
+# store.
+[package.metadata.android]
+package = "dev.daveboyd.freecell"
+
+[package.metadata.android.sdk]
+# API 26 (Android 8.0): covers the vast majority of active devices while
+# staying comfortably within what winit's Android backend supports.
+min_sdk_version = 26
+target_sdk_version = 34
+
+[package.metadata.android.application]
+label = "DaveB's Freecell"
+
 [dependencies]
-eframe = "0.36.1"
 egui = "0.36.1"
 freecell = { version = "0.1.0", path = ".." }
-# Renders the statistics charts (issue #14): win-rate trend and
-# move-count distribution. Draws into an in-memory RGB buffer (no file
-# I/O) for on-screen display via an egui texture; native-only PNG/SVG
-# export additionally uses its file-writing backends.
-plotters = "0.3"
 # Cross-platform `SystemTime`/`UNIX_EPOCH`: real time natively, backed by
 # `Date`/`Performance.now()` on wasm32, where `std::time::SystemTime`
 # panics. Already an `eframe` dependency; declared directly here too since
@@ -33,3 +57,55 @@ log = "0.4"
 # here too just unifies with that same dependency, adding the two
 # features this crate's own code needs.
 web-sys = { version = "0.3", features = ["Location", "Window"] }
+
+# `eframe` is deliberately declared per-target below, not once here
+# unconditionally, so android's feature set can genuinely exclude
+# `accesskit` (see that section's comment) without any risk of changing
+# the already-shipped desktop/wasm behavior: with no unconditional entry,
+# each target gets exactly one applicable declaration, not a union of two.
+[target.'cfg(not(target_os = "android"))'.dependencies]
+# Unchanged from before this crate had an Android target: full default
+# features (accesskit, wgpu, x11, wayland, links, web_screen_reader,
+# winit/default, default_fonts).
+eframe = "0.36.1"
+# Renders the statistics charts (issue #14): win-rate trend and
+# move-count distribution. Draws into an in-memory RGB buffer (no file
+# I/O) for on-screen display via an egui texture; native-desktop-only
+# PNG/SVG export additionally uses its file-writing backends. Unavailable
+# on Android -- see the comment on the android dependency section below.
+plotters = "0.3"
+
+# Android build. `android-native-activity` (not `android-game-activity`)
+# to match `cargo-apk`'s own `AndroidManifest` default activity class
+# (`android.app.NativeActivity`, see `ndk-build`'s `default_activity_name`)
+# without also having to hand-configure and bundle GameActivity's Java
+# glue class, which `cargo-apk` doesn't automate. `default-features =
+# false` is required here: `accesskit` (on by default) is incompatible
+# with `android-native-activity` (see eframe's own `compile_error!` for
+# this exact combination), and re-deriving the rest of the needed set
+# (`default_fonts`, `wgpu`, `links`) explicitly, rather than trying to
+# subtract just `accesskit`, is what the dependency split above makes
+# possible without touching desktop/wasm's own (unconditional, untouched)
+# `eframe` entry.
+[target.'cfg(target_os = "android")'.dependencies]
+eframe = { version = "0.36.1", default-features = false, features = [
+    "android-native-activity",
+    "default_fonts",
+    "wgpu",
+    "links",
+] }
+# Only to name winit::platform::android::activity::AndroidApp in
+# android_main's signature below -- eframe already depends on the same
+# winit version, so this doesn't pull in a second copy.
+winit = "0.30"
+# Routes `log` output to Android's logcat (there is no terminal to print
+# to), mirroring eframe::WebLogger's role on wasm32.
+android_logger = "0.14"
+log = "0.4"
+# The statistics charts window (issue #14) is unavailable on this minimal
+# Android build: `plotters`' default `ttf` feature depends on `font-kit`,
+# which has no Android backend and pulls in `yeslogic-fontconfig-sys` --
+# fontconfig doesn't exist on Android and can't be made to via
+# cross-compiled pkg-config, so this is a real platform gap, not a config
+# problem to work around. See `lib.rs`'s `#[cfg(not(target_os = "android"))]`
+# gates around `mod charts` and all of its call sites.
