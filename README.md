@@ -33,6 +33,13 @@ free  a:__ b:__ c:__ d:__    home  C- D- H- S-
 
 ## Download and install
 
+### Prebuilt binaries
+
+Grab the latest Windows/macOS/Linux archive (CLI, TUI, and native GUI) from
+the [Releases page](https://github.com/daveboyd777/DaveBs-Freecell/releases/latest)
+-- no Rust toolchain required. Or play the GUI directly in a browser, no
+download at all: [daveboyd777.github.io/DaveBs-Freecell](https://daveboyd777.github.io/DaveBs-Freecell/).
+
 ### Prerequisite: Rust
 
 Install Rust from <https://rustup.rs> (any recent stable toolchain).

@@ -199,10 +199,13 @@ Already in place from this commit:
 - **CI** (GitHub Actions): `cargo fmt --check`, `cargo clippy -D warnings`,
   `cargo test` on every push/PR
 - **Dependabot**: weekly Cargo and GitHub Actions update PRs, auto-labeled
+- **Release workflow** (#15): pushing a `v*` tag builds `freecell`,
+  `freecell-tui`, and `freecell-gui` release binaries on Windows, macOS,
+  and Linux, packages each platform into an archive with the README and
+  LICENSE, and publishes them all to a GitHub Release --
+  `.github/workflows/release.yml`, giving the README a real download link
 
 Planned:
 
-- Release workflow: tagged pushes build Windows/macOS/Linux binaries and
-  attach them to GitHub Releases (gives README a real "download an exe" path)
 - Code coverage reporting (cargo-llvm-cov) with a badge
 - Auto-merge for green patch-level Dependabot PRs
