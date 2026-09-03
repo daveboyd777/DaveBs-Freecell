@@ -117,10 +117,15 @@ architecture better.
    placeholder screen) proving the wiring; CI's `check` job now runs
    `--workspace` so both stay green as they grow. Actual card rendering and
    input land in steps 1–4.
-1. ratatui front-end as a store subscriber (keyboard + mouse)
-2. Card rendering with color, selection highlights, and legal-move hints
-3. egui/eframe desktop app sharing the same store
-4. WASM build published from CI to GitHub Pages
+1. ratatui front-end as a store subscriber (keyboard + mouse) — done (#6, #7)
+2. Card rendering with color, selection highlights, and legal-move hints —
+   done (#7), later joined by real vector suit pips (issue #8's follow-up)
+3. egui/eframe desktop app sharing the same store — done (#8)
+4. WASM build published from CI to GitHub Pages — done (#9)
+
+**Phase 2 is now complete.** (A locally-buildable Android debug build was
+later added on top of the same `gui` crate -- see "Beyond the roadmap"
+below, since it wasn't part of this phase's original plan.)
 
 ## Phase 3 — Self-analysis and statistics
 
@@ -215,3 +220,25 @@ Already in place from this commit:
   bumps are left for manual review.
 
 **Phase 4 is now complete.**
+
+## Beyond the roadmap
+
+Ad hoc additions made outside the original phased plan above, not tied to
+a specific phase:
+
+- **Android (local debug build only)**: `gui/` doubles as a `cdylib` with
+  its own `android_main` entry point, built into a sideload-only debug
+  APK via `cargo apk build --lib` -- not published to any store, not
+  wired into CI or the release workflow. Uses `android-native-activity`
+  (matching `cargo-apk`'s own manifest default) rather than
+  `android-game-activity`, since the latter needs Java glue `cargo-apk`
+  doesn't automate. The statistics charts window is unavailable on this
+  target -- `plotters`' font rendering has no Android backend. See the
+  README's "Android (local debug build only)" section for build steps.
+- **Design papers** (`docs/papers/`): in-depth write-ups of *why*,
+  complementing this document's *what/when*: engine and workspace
+  architecture, hint/solver design, and a design-notes survey of
+  FreeCell solution strategies.
+- **Podcast script** (`docs/podcast-script.md`): a conversational
+  transcript about the project, meant to be fed into a text-to-speech or
+  AI podcast-generation tool of the reader's choice.
