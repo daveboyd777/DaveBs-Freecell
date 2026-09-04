@@ -1,0 +1,81 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  # Lets a release be re-run by hand (e.g. after fixing a packaging bug)
+  # without having to delete and re-push a tag.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: linux
+          - os: macos-latest
+            name: macos
+          - os: windows-latest
+            name: windows
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # eframe/egui (the gui workspace member) link against these on Linux
+      # -- same package list ci.yml's "Format, lint, and test" job installs.
+      - name: Install Linux GUI toolkit dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev libfontconfig1-dev
+      # Builds all three user-facing binaries -- the text CLI (`freecell`,
+      # this workspace's root package), the ratatui TUI (`freecell-tui`),
+      # and the native egui desktop GUI (`freecell-gui`; its separate WASM
+      # build is already published continuously to GitHub Pages by
+      # pages.yml, so it's not part of this per-platform archive).
+      - name: Build release binaries
+        run: cargo build --release --workspace
+      - name: Package archive (Unix)
+        if: matrix.os != 'windows-latest'
+        shell: bash
+        run: |
+          dir="freecell-${{ github.ref_name }}-${{ matrix.name }}"
+          mkdir "$dir"
+          cp target/release/freecell target/release/freecell-tui target/release/freecell-gui "$dir/"
+          cp README.md LICENSE "$dir/"
+          tar -czf "$dir.tar.gz" "$dir"
+      - name: Package archive (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $dir = "freecell-${{ github.ref_name }}-windows"
+          New-Item -ItemType Directory -Path $dir | Out-Null
+          Copy-Item target/release/freecell.exe,target/release/freecell-tui.exe,target/release/freecell-gui.exe,README.md,LICENSE -Destination $dir
+          Compress-Archive -Path $dir -DestinationPath "$dir.zip"
+      - name: Upload archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: freecell-${{ matrix.name }}
+          path: freecell-${{ github.ref_name }}-${{ matrix.name }}.*
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Create the release and attach the archives
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" dist/* --repo "${{ github.repository }}" --title "${{ github.ref_name }}" --generate-notes

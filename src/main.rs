@@ -1,8 +1,19 @@
-use freecell::{parse_move, replay, Action, Game, Store};
+use freecell::solver::Solvability;
+use freecell::stats::{Stats, StatsRecorder};
+use freecell::{parse_move, replay, Action, Game, Loc, Store};
 use std::io::{self, BufRead, Write};
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn main() {
+    if std::env::args().nth(1).as_deref() == Some("stats") {
+        return if std::env::args().nth(2).as_deref() == Some("--json") {
+            print_stats_json()
+        } else {
+            print_stats()
+        };
+    }
+
     let original_seed = std::env::args()
         .nth(1)
         .and_then(|s| s.parse::<u32>().ok())
@@ -16,6 +27,50 @@ fn main() {
     // it is always a valid `(original_seed, log)` reconstruction of `store`.
     let mut log: Vec<Action> = Vec::new();
     let mut replay_shown = false;
+
+    // Store subscriber that records every finished game to the OS data
+    // directory (issue #11). Shared across all three UIs via
+    // `freecell::stats::StatsRecorder`, so play in the CLI, TUI, or GUI all
+    // contribute to the same persisted history. `Arc<Mutex<_>>` rather than
+    // the other UIs' `Rc<RefCell<_>>`: the Ctrl+C handler below runs on a
+    // separate thread (`ctrlc`'s), which requires `Send`.
+    let stats_path = freecell::stats::default_stats_path();
+    let stats = stats_path
+        .as_deref()
+        .map(Stats::load_or_default)
+        .unwrap_or_default();
+    let recorder = Arc::new(Mutex::new(StatsRecorder::new(
+        original_seed,
+        stats,
+        stats_path,
+    )));
+    let recorder_for_subscriber = Arc::clone(&recorder);
+    store.subscribe(move |state, action| {
+        recorder_for_subscriber
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .observe(state, action);
+    });
+
+    // Closes the quit-detection gap `observe` alone leaves: pressing
+    // Ctrl+C recorded nothing before, since it never dispatches a
+    // `Deal`/`Restart` for `observe` to trigger on. `ctrlc` runs this
+    // closure on its own dedicated thread once, then this process exits;
+    // `StatsRecorder::finalize_on_exit` is the idempotent "record the
+    // in-progress attempt as a loss if it's genuine" call also used after
+    // the main loop below, so a Ctrl+C that races with a normal quit can
+    // never double-record.
+    let recorder_for_signal = Arc::clone(&recorder);
+    if let Err(e) = ctrlc::set_handler(move || {
+        recorder_for_signal
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .finalize_on_exit();
+        println!("\nInterrupted.");
+        std::process::exit(0);
+    }) {
+        eprintln!("Warning: failed to install Ctrl+C handler: {e}");
+    }
 
     println!("FreeCell - type ? for help");
     loop {
@@ -74,6 +129,14 @@ fn main() {
                 dispatch(&mut store, &mut log, Action::Restart);
                 continue;
             }
+            "h" | "hint" => {
+                print_hint(store.state());
+                continue;
+            }
+            "g" | "report" => {
+                print_report(store.game());
+                continue;
+            }
             _ => {}
         }
 
@@ -90,6 +153,13 @@ fn main() {
             None => println!("Unrecognized command '{line}' — type ? for help."),
         }
     }
+
+    // Every break above (an explicit quit command or EOF) reaches here;
+    // idempotent with the Ctrl+C handler's own call to the same method.
+    recorder
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .finalize_on_exit();
 }
 
 /// Dispatch `action` through the store; on success, append it to the replay
@@ -124,6 +194,68 @@ fn print_replay(seed: u32, log: &[Action], expected: &Game) {
     }
 }
 
+/// `h`/`hint` (issue #13): suggest a next move via `freecell::analysis::
+/// hint`, using a search budget small enough to stay responsive but that
+/// can still occasionally come back empty-handed on a hard position.
+fn print_hint(state: &freecell::GameState) {
+    print!("Thinking...");
+    io::stdout().flush().ok();
+    match freecell::analysis::hint(state) {
+        Some((from, to)) => println!("\rHint: try {}{}          ", loc_char(from), loc_char(to)),
+        None => println!(
+            "\rNo hint available right now (the search was inconclusive, or this position may not be winnable)."
+        ),
+    }
+}
+
+/// `g`/`report` (issue #13): grade the current attempt via
+/// `freecell::analysis::grade` -- moves played vs. the solver's best line
+/// from the original deal, where a losing attempt went wrong, and which
+/// foundations stalled. Works whether the attempt is finished or not.
+fn print_report(game: &Game) {
+    print!("Analyzing...");
+    io::stdout().flush().ok();
+    let report = freecell::analysis::grade(game);
+    println!("\r                ");
+    println!("Moves played: {}", report.moves_played);
+    match &report.best_line {
+        Solvability::Solvable(moves) => println!(
+            "This deal is solvable in {} move(s) (solver's best line).",
+            moves.len()
+        ),
+        Solvability::Unsolvable => println!("This deal was never winnable."),
+        Solvability::Unknown => {
+            println!("Could not determine whether this deal is solvable (search inconclusive).")
+        }
+    }
+    match report.first_unsolvable_move {
+        Some(0) => println!("This attempt was never winnable, from the very start."),
+        Some(i) => println!("This attempt became unwinnable at move {i}."),
+        None => println!("This attempt is still winnable (or that was inconclusive)."),
+    }
+    const SUIT_CHARS: [char; 4] = ['C', 'D', 'H', 'S'];
+    const RANK_CHARS: [char; 14] = [
+        '-', 'A', '2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K',
+    ];
+    let foundations: Vec<String> = report
+        .foundations
+        .iter()
+        .enumerate()
+        .map(|(i, &r)| format!("{}{}", SUIT_CHARS[i], RANK_CHARS[r as usize]))
+        .collect();
+    println!("Foundations: {}", foundations.join(" "));
+}
+
+/// Render a location the same way the CLI's/TUI's/GUI's move grammar
+/// spells it (e.g. `Loc::Free(1)` -> `'b'`), for `print_hint`'s output.
+fn loc_char(loc: Loc) -> char {
+    match loc {
+        Loc::Cascade(i) => (b'1' + i as u8) as char,
+        Loc::Free(i) => (b'a' + i as u8) as char,
+        Loc::Foundation => 'h',
+    }
+}
+
 fn random_seed() -> u32 {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -131,6 +263,54 @@ fn random_seed() -> u32 {
         .unwrap_or(1);
     // Classic deals are numbered 1..=32000.
     nanos % 32000 + 1
+}
+
+/// `freecell stats`: print the persisted classic FreeCell statistics and
+/// exit, without starting the game loop (issue #11). Plain text only;
+/// `stats --json` (below) is the versioned machine-readable export
+/// (issue #19).
+fn print_stats() {
+    let stats = load_persisted_stats();
+
+    println!("Games played: {}", stats.games_played());
+    println!("Games won:    {}", stats.games_won());
+    println!("Games lost:   {}", stats.games_lost());
+    println!("Win rate:     {:.1}%", stats.win_percentage());
+    println!(
+        "Current streak: {}",
+        describe_streak(stats.current_streak())
+    );
+    println!("Longest winning streak: {}", stats.longest_winning_streak());
+    println!("Longest losing streak:  {}", stats.longest_losing_streak());
+}
+
+/// `freecell stats --json` (issue #19): print the persisted stats as the
+/// versioned `freecell::stats::StatsExport` JSON schema and exit. This is
+/// the hinge point for external renderers (in-app charts, issue #14; the
+/// web dashboard, issue #20) -- everything is computed here in Rust, in
+/// the tested `stats` module; a consumer of this output only ever renders
+/// it.
+fn print_stats_json() {
+    let export = freecell::stats::StatsExport::from_stats(&load_persisted_stats());
+    match export.to_json() {
+        Ok(json) => println!("{json}"),
+        Err(e) => eprintln!("Failed to serialize stats: {e}"),
+    }
+}
+
+fn load_persisted_stats() -> Stats {
+    freecell::stats::default_stats_path()
+        .map(|path| Stats::load_or_default(&path))
+        .unwrap_or_default()
+}
+
+fn describe_streak(streak: freecell::stats::Streak) -> String {
+    use freecell::stats::Streak;
+    match streak {
+        Streak::Winning(n) => format!("{n} game(s) won in a row"),
+        Streak::Losing(n) => format!("{n} game(s) lost in a row"),
+        Streak::None => "none yet".to_string(),
+    }
 }
 
 fn render(store: &Store) {
@@ -201,6 +381,8 @@ fn print_help() {
          \x20 y         redo the last undone move\n\
          \x20 r         restart this deal\n\
          \x20 n [seed]  new game (optionally a specific deal number)\n\
+         \x20 h         hint: suggest a move (may take a moment)\n\
+         \x20 g         report: grade this attempt so far (may take a moment)\n\
          \x20 q         quit\n"
     );
 }

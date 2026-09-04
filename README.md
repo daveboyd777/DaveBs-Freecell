@@ -1,6 +1,8 @@
 # DaveB's Freecell
 
 [![CI](https://github.com/daveboyd777/DaveBs-Freecell/actions/workflows/ci.yml/badge.svg)](https://github.com/daveboyd777/DaveBs-Freecell/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/daveboyd777/DaveBs-Freecell/graph/badge.svg)](https://codecov.io/gh/daveboyd777/DaveBs-Freecell)
+[![Latest Release](https://img.shields.io/github/v/release/daveboyd777/DaveBs-Freecell)](https://github.com/daveboyd777/DaveBs-Freecell/releases/latest)
 
 A faithful FreeCell card game for the terminal, written in Rust and built
 test-first. Deals are bit-compatible with the classic Microsoft FreeCell
@@ -32,6 +34,13 @@ free  a:__ b:__ c:__ d:__    home  C- D- H- S-
 - 16-test engine specification written before the implementation (TDD)
 
 ## Download and install
+
+### Prebuilt binaries
+
+Grab the latest Windows/macOS/Linux archive (CLI, TUI, and native GUI) from
+the [Releases page](https://github.com/daveboyd777/DaveBs-Freecell/releases/latest)
+-- no Rust toolchain required. Or play the GUI directly in a browser, no
+download at all: [daveboyd777.github.io/DaveBs-Freecell](https://daveboyd777.github.io/DaveBs-Freecell/).
 
 ### Prerequisite: Rust
 
@@ -95,6 +104,8 @@ cargo test            # run the engine specification (freecell package only)
 cargo fmt --all --check     # formatting, whole workspace
 cargo clippy --workspace --all-targets -- -D warnings   # lints, whole workspace
 cargo test --workspace      # tests, whole workspace (incl. tui/gui once they have any)
+node --test dashboard/*.test.mjs   # web dashboard's pure data-transform tests
+cargo llvm-cov --workspace --open   # coverage report (needs cargo-llvm-cov)
 ```
 
 Project layout (a Cargo workspace):
@@ -105,13 +116,57 @@ src/lib.rs            game engine (no I/O)
 src/store.rs          Store: dispatches Action, notifies subscribers
 src/main.rs           text CLI (dispatches Action through a Store)
 tests/                engine, reducer, and Store test suites
-tui/                  ratatui terminal UI (freecell-tui) -- WIP, Phase 2
-gui/                  egui/eframe desktop + WASM UI (freecell-gui) -- WIP, Phase 2
+tui/                  ratatui terminal UI (freecell-tui)
+gui/                  egui/eframe desktop + WASM + Android UI (freecell-gui);
+                      src/lib.rs holds the app, src/main.rs is a thin
+                      native/wasm entry point (see "Android" below)
+dashboard/            static JS/D3 web stats dashboard, deployed alongside
+                      the WASM build to GitHub Pages at /dashboard/
+docs/papers/          in-depth design papers; docs/podcast-script.md is a
+                      podcast-style transcript about the project
 ```
 
 `tui/` and `gui/` are separate workspace members (not features of `freecell`)
 because their dependencies don't coexist cleanly in one crate -- see the
 comment at the top of the root `Cargo.toml`.
+
+### Android (local debug build only)
+
+`gui/` doubles as a `cdylib` with its own `android_main` entry point
+(`gui/src/lib.rs`), so the exact same app can also be packaged as a
+sideload-only Android debug APK -- not published to any app store, and not
+built by CI. To reproduce locally:
+
+```sh
+rustup target add aarch64-linux-android
+cargo install cargo-apk
+# Requires a JDK, and an Android SDK with platform-tools, platforms;android-34,
+# build-tools;34.0.0, and ndk;27.0.12077973 (or compatible versions) installed,
+# with ANDROID_HOME/ANDROID_NDK_HOME pointing at them.
+cd gui
+cargo apk build --lib   # --lib: this crate also has a native/wasm binary target,
+                        # which cargo-apk otherwise gets confused trying to package too
+```
+
+The signed APK lands at `target/debug/apk/freecell_gui.apk`; install it with
+`adb install` or `cargo apk run --lib` on a connected device/emulator. The
+statistics charts window isn't available on this target -- `plotters`'
+font rendering has no Android backend -- everything else (the board, moves,
+hints, undo/redo) works the same as the desktop build, except stats don't
+persist between runs (no OS data directory in this sandboxed environment,
+the same graceful fallback the WASM build already uses).
+
+## Web stats dashboard
+
+The classic FreeCell stats (win rate, streaks, per-deal history) are also
+browsable as interactive charts at
+[daveboyd777.github.io/DaveBs-Freecell/dashboard/](https://daveboyd777.github.io/DaveBs-Freecell/dashboard/)
+-- a static, JavaScript-only page (D3.js) that never computes anything
+itself; it only renders a `freecell stats --json` export you load (drag a
+file in, or try the built-in sample data). Clicking a game opens the WASM
+game pre-loaded on that deal for a rematch. See `dashboard/` and
+ROADMAP.md's "two-track visualization" section for the Rust/JavaScript
+split this is built on.
 
 ## Roadmap
 
@@ -119,11 +174,25 @@ See [ROADMAP.md](ROADMAP.md) for the continuous-improvement plan: Redux-style
 state management, a richer visual interface, and self-analysis / statistics
 modules tracking the classic FreeCell stats.
 
+## Design papers
+
+For in-depth write-ups of *why* specific parts are designed the way they
+are (not just what they do), see [docs/papers/](docs/papers/README.md):
+engine/architecture, hint/solver design, and a design-notes survey of
+FreeCell solution strategies.
+
+There's also a [video script](docs/podcast-script.md) about the project,
+styled as a *Thin Man* pastiche (Nick, Nora, and their dog Asta) --
+complete with generation directions for animating Nick from a Dave Boyd
+photo with a voice clone of Dave Boyd's own voice, and Nora from a Myrna
+Loy lookalike. A plain two-host cut for a straight audio podcast is
+included as an appendix.
+
 ## Video tour
 
-Prefer watching to reading? There's an 11-minute black-and-white video
-podcast that walks through the whole project — engine, store, statistics,
-solver, and all four interfaces — in the style of *The Thin Man*:
+That script has been produced: an 11-minute black-and-white video podcast
+that walks through the whole project — engine, store, statistics,
+solver, and all four interfaces:
 
 - **Watch/download:** [Video Podcast release](https://github.com/daveboyd777/DaveBs-Freecell/releases/tag/podcast-2026-09-04)
 - **Background, credits, and rebuild sources:** [docs/media/podcast/PODCAST.md](docs/media/podcast/PODCAST.md)
@@ -132,8 +201,14 @@ solver, and all four interfaces — in the style of *The Thin Man*:
 
 - **GitHub Actions CI** builds, lints, and runs the full test suite on every
   push and pull request.
+- **Code coverage** (cargo-llvm-cov, badge above) uploads to
+  [Codecov](https://codecov.io/gh/daveboyd777/DaveBs-Freecell) on every push
+  and pull request.
+- **Release workflow** builds and publishes Windows/macOS/Linux binaries to
+  GitHub Releases on every `v*` tag.
 - **Dependabot** watches Cargo dependencies and the CI workflow itself,
-  opening automatic update pull requests weekly.
+  opening automatic update pull requests weekly; green patch-level updates
+  auto-merge on their own once CI passes.
 - **CodeRabbit** (AI code review, free for open-source) reviews every pull
   request — configuration in [`.coderabbit.yaml`](.coderabbit.yaml).
 

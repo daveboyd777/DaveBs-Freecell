@@ -1,0 +1,66 @@
+name: Deploy WASM to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Only one Pages deployment at a time; let an in-flight one finish rather
+# than cancelling it mid-upload.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build WASM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - name: Install trunk
+        uses: taiki-e/install-action@v2
+        with:
+          tool: trunk
+      - name: Build gui crate for wasm32
+        working-directory: gui
+        # GitHub Pages project sites are served at
+        # https://<user>.github.io/<repo>/, so the wasm/js/css asset base
+        # path has to match the repository name.
+        run: trunk build --release --public-url "/${{ github.event.repository.name }}/"
+      # The stats dashboard (issue #20) is plain static files with no
+      # build step of its own; it's served from the same Pages site as
+      # the game, at /dashboard/, by copying it into trunk's output
+      # directory alongside the built wasm/js/css before upload. Its
+      # "back to the game" and replay links use relative paths (`../`),
+      # so this works unchanged under any repository name.
+      - name: Copy the stats dashboard into the Pages output
+        run: |
+          cp -r dashboard gui/dist/dashboard
+          rm -f gui/dist/dashboard/*.test.mjs
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Upload build output
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: gui/dist
+
+  deploy:
+    name: Deploy
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

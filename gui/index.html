@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+    <title>DaveB's Freecell</title>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            overflow: hidden;
+            background: #1b1b1b;
+        }
+        /* eframe/egui expects to fully own and resize this canvas. */
+        canvas {
+            margin: 0;
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        #loading_text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-family: sans-serif;
+            color: #dddddd;
+        }
+        /* Issue #20: a small, unobtrusive link to the stats dashboard,
+           which lives at /dashboard/ alongside this page's own build
+           output (see .github/workflows/pages.yml). */
+        #dashboard_link {
+            position: absolute;
+            bottom: 12px;
+            right: 16px;
+            font-family: sans-serif;
+            font-size: 0.85rem;
+        }
+        #dashboard_link a {
+            color: #9a9a9a;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="the_canvas_id"></canvas>
+    <div id="loading_text">
+        <p>Loading DaveB's Freecell&hellip;</p>
+    </div>
+    <div id="dashboard_link"><a href="dashboard/">Stats dashboard &rarr;</a></div>
+
+    <!-- Trunk replaces this with a <script> that loads the built wasm/js. -->
+    <link data-trunk rel="rust" href="Cargo.toml" data-wasm-opt="2" />
+</body>
+</html>

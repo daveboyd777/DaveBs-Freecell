@@ -39,7 +39,7 @@ docs/media/podcast/
 ├── AGENT_PLAN.md                          executable handoff plan (Warp-X / Copilot)
 ├── DaveBs-Freecell-Video-Podcast.mp4      final video (Git LFS, ~290 MB)
 └── production/                            everything needed to rebuild or restyle
-    ├── script-source.pdf                  the original script document
+    ├── script-source.pdf                  the original script document (markdown twin: docs/podcast-script.md)
     ├── dialogue.json                      script parsed into 51 timed segments
     ├── analyze-voice.js                   F0 analysis of the voice sample (pitch matching)
     ├── synthesize.js                      TTS synthesis (msedge-tts neural voices)

@@ -21,12 +21,13 @@ mod board;
 
 use crossterm::{
     event::{
-        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, MouseButton,
-        MouseEventKind,
+        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers,
+        MouseButton, MouseEventKind,
     },
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
+use freecell::stats::{Stats, StatsRecorder};
 use freecell::{Action, ActionError, Loc, Store, parse_move, replay};
 use ratatui::{
     Terminal,
@@ -102,6 +103,13 @@ struct App {
     input: String,
     status: Option<String>,
     show_help: bool,
+    /// Store subscriber that records every finished game (issue #11),
+    /// shared with the CLI and GUI via `freecell::stats::StatsRecorder`.
+    /// Kept as a field (rather than only captured by the subscriber
+    /// closure in `App::new`) so `finalize_stats` can call
+    /// `StatsRecorder::finalize_on_exit` from the TUI's own shutdown
+    /// paths -- quitting with 'q', Ctrl+C, or `run` otherwise returning.
+    stats: Rc<RefCell<StatsRecorder>>,
 }
 
 impl App {
@@ -115,6 +123,24 @@ impl App {
         store.subscribe(move |_state, action| {
             log_for_subscriber.borrow_mut().push(*action);
         });
+
+        // Store subscriber that records every finished game to the OS data
+        // directory (issue #11), shared with the CLI and GUI via
+        // `freecell::stats::StatsRecorder` so all three contribute to the
+        // same persisted history.
+        let stats_path = freecell::stats::default_stats_path();
+        let persisted = stats_path
+            .as_deref()
+            .map(Stats::load_or_default)
+            .unwrap_or_default();
+        let stats = Rc::new(RefCell::new(StatsRecorder::new(
+            seed, persisted, stats_path,
+        )));
+        let stats_for_subscriber = Rc::clone(&stats);
+        store.subscribe(move |state, action| {
+            stats_for_subscriber.borrow_mut().observe(state, action);
+        });
+
         Self {
             store,
             original_seed: seed,
@@ -124,7 +150,16 @@ impl App {
             input: String::new(),
             status: None,
             show_help: false,
+            stats,
         }
+    }
+
+    /// Record the in-progress game as a loss if it's a genuine, unfinished
+    /// attempt (issue #11's quit-detection gap): call this from every one
+    /// of the TUI's own shutdown paths. Idempotent, so it's safe to call
+    /// from more than one of them for the same exit.
+    fn finalize_stats(&self) {
+        self.stats.borrow_mut().finalize_on_exit();
     }
 
     fn dispatch(&mut self, action: Action) {
@@ -165,6 +200,18 @@ impl App {
                 return;
             }
             "r" | "restart" => return self.dispatch(Action::Restart),
+            "h" | "hint" => {
+                self.status = Some(match freecell::analysis::hint(self.store.state()) {
+                    Some((from, to)) => format!("Hint: try {}{}", loc_char(from), loc_char(to)),
+                    None => "No hint available right now.".to_string(),
+                });
+                return;
+            }
+            "g" | "report" => {
+                let report = freecell::analysis::grade(self.store.game());
+                self.status = Some(describe_report(&report));
+                return;
+            }
             _ => {}
         }
 
@@ -210,7 +257,12 @@ fn main() -> io::Result<()> {
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout))?;
 
-    run(&mut terminal, &mut app)
+    let result = run(&mut terminal, &mut app);
+    // Covers any exit from `run` that isn't already one of the explicit
+    // quit paths inside it (e.g. propagating a terminal I/O error via
+    // `?`); idempotent with those, so this never double-records.
+    app.finalize_stats();
+    result
 }
 
 /// Regions of the terminal, recomputed fresh from the current terminal size
@@ -238,7 +290,19 @@ fn run(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) -> io::
         }
         match event::read()? {
             Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
-                KeyCode::Char('q') if app.input.is_empty() => return Ok(()),
+                KeyCode::Char('q') if app.input.is_empty() => {
+                    app.finalize_stats();
+                    return Ok(());
+                }
+                // Raw mode (`enable_raw_mode`, above) disables the
+                // terminal's own Ctrl+C-to-SIGINT handling, so it arrives
+                // here as a plain key event rather than terminating the
+                // process -- handle it as an explicit quit rather than
+                // (per the catch-all below) inserting a literal 'c'.
+                KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    app.finalize_stats();
+                    return Ok(());
+                }
                 KeyCode::Char('?') if app.input.is_empty() => app.show_help = !app.show_help,
                 KeyCode::Enter => {
                     let line = std::mem::take(&mut app.input);
@@ -465,6 +529,7 @@ fn draw_footer(frame: &mut ratatui::Frame, area: Rect, app: &App) {
     if app.show_help {
         let text = "Moves: two chars, source then destination -- 1-8 cascades, a-d free cells, h/f foundations (e.g. 35, 1a, 2h).\n\
              Commands: a auto-play, u undo, y redo, r restart, n [seed] new game, q quit.\n\
+             \x20         h hint (may take a moment), g report (may take a moment).\n\
              Mouse: click a location to select it, click again to move there (or the same spot to deselect).\n\
              Press ? to close help.";
         frame.render_widget(
@@ -504,6 +569,36 @@ fn draw_footer(frame: &mut ratatui::Frame, area: Rect, app: &App) {
         Paragraph::new(lines).block(Block::default().borders(Borders::ALL)),
         area,
     );
+}
+
+/// Summarize a `freecell::analysis::GameReport` (issue #13) into one
+/// compact status line: moves played vs. the solver's best line from the
+/// original deal, where a losing attempt went wrong (if anywhere), and
+/// which foundations stalled.
+fn describe_report(report: &freecell::analysis::GameReport) -> String {
+    use freecell::solver::Solvability;
+    let best_line = match &report.best_line {
+        Solvability::Solvable(moves) => format!("best line {}", moves.len()),
+        Solvability::Unsolvable => "never winnable".to_string(),
+        Solvability::Unknown => "best line unknown".to_string(),
+    };
+    let went_wrong = match report.first_unsolvable_move {
+        Some(0) => "unwinnable from the start".to_string(),
+        Some(i) => format!("went wrong at move {i}"),
+        None => "still winnable".to_string(),
+    };
+    const SUIT_CHARS: [char; 4] = ['C', 'D', 'H', 'S'];
+    let foundations: Vec<String> = report
+        .foundations
+        .iter()
+        .enumerate()
+        .map(|(i, &r)| format!("{}{}", SUIT_CHARS[i], rank_char(r)))
+        .collect();
+    format!(
+        "{} moves | {best_line} | {went_wrong} | {}",
+        report.moves_played,
+        foundations.join(" ")
+    )
 }
 
 /// The `(seed, actions)` replay proof issue #5 asks for, adapted for the

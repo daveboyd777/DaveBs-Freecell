@@ -117,10 +117,15 @@ architecture better.
    placeholder screen) proving the wiring; CI's `check` job now runs
    `--workspace` so both stay green as they grow. Actual card rendering and
    input land in steps 1–4.
-1. ratatui front-end as a store subscriber (keyboard + mouse)
-2. Card rendering with color, selection highlights, and legal-move hints
-3. egui/eframe desktop app sharing the same store
-4. WASM build published from CI to GitHub Pages
+1. ratatui front-end as a store subscriber (keyboard + mouse) — done (#6, #7)
+2. Card rendering with color, selection highlights, and legal-move hints —
+   done (#7), later joined by real vector suit pips (issue #8's follow-up)
+3. egui/eframe desktop app sharing the same store — done (#8)
+4. WASM build published from CI to GitHub Pages — done (#9)
+
+**Phase 2 is now complete.** (A locally-buildable Android debug build was
+later added on top of the same `gui` crate -- see "Beyond the roadmap"
+below, since it wasn't part of this phase's original plan.)
 
 ## Phase 3 — Self-analysis and statistics
 
@@ -180,7 +185,17 @@ Separation-of-concerns rules that keep the fork safe:
 5. Versioned JSON export (`freecell stats --json`) with schema tests —
    the hinge point the JavaScript track hangs on
 6. D3.js / Observable Plot dashboard on GitHub Pages consuming the JSON,
-   including deal-level drill-down and replay links
+   including deal-level drill-down and replay links -- done (#20). Lives
+   in `dashboard/` (plain static HTML/CSS/JS, D3 via CDN, no build step)
+   and deploys alongside the WASM game at `/dashboard/`. Since
+   `GameResult` only records a deal's seed and outcome, not its full
+   action log, "replay" here means opening the WASM game on that same
+   numbered deal (`?seed=`, parsed by `gui/src/main.rs`) rather than
+   replaying the exact recorded moves -- still fully in the spirit of
+   "a game is fully described by `(seed, action log)`", since a fresh
+   deal from that seed *is* that game's starting position.
+
+**Phase 3 is now complete.**
 
 ## Phase 4 — Release and maintenance automation
 
@@ -189,10 +204,41 @@ Already in place from this commit:
 - **CI** (GitHub Actions): `cargo fmt --check`, `cargo clippy -D warnings`,
   `cargo test` on every push/PR
 - **Dependabot**: weekly Cargo and GitHub Actions update PRs, auto-labeled
+- **Release workflow** (#15): pushing a `v*` tag builds `freecell`,
+  `freecell-tui`, and `freecell-gui` release binaries on Windows, macOS,
+  and Linux, packages each platform into an archive with the README and
+  LICENSE, and publishes them all to a GitHub Release --
+  `.github/workflows/release.yml`, giving the README a real download link
+- **Code coverage** (#16): `cargo-llvm-cov` runs alongside the rest of CI
+  and uploads an lcov report to Codecov, which renders the README badge
+  -- `fail_ci_if_error: false`, so this never blocks CI even before the
+  repo is activated on codecov.io
+- **Dependabot auto-merge** (#17): `.github/workflows/dependabot-auto-merge.yml`
+  enables GitHub's native auto-merge on a Dependabot PR once it's a
+  patch-level bump (`dependabot/fetch-metadata`'s `update-type`); GitHub
+  still waits for CI to go green before actually merging it. Minor/major
+  bumps are left for manual review.
 
-Planned:
+**Phase 4 is now complete.**
 
-- Release workflow: tagged pushes build Windows/macOS/Linux binaries and
-  attach them to GitHub Releases (gives README a real "download an exe" path)
-- Code coverage reporting (cargo-llvm-cov) with a badge
-- Auto-merge for green patch-level Dependabot PRs
+## Beyond the roadmap
+
+Ad hoc additions made outside the original phased plan above, not tied to
+a specific phase:
+
+- **Android (local debug build only)**: `gui/` doubles as a `cdylib` with
+  its own `android_main` entry point, built into a sideload-only debug
+  APK via `cargo apk build --lib` -- not published to any store, not
+  wired into CI or the release workflow. Uses `android-native-activity`
+  (matching `cargo-apk`'s own manifest default) rather than
+  `android-game-activity`, since the latter needs Java glue `cargo-apk`
+  doesn't automate. The statistics charts window is unavailable on this
+  target -- `plotters`' font rendering has no Android backend. See the
+  README's "Android (local debug build only)" section for build steps.
+- **Design papers** (`docs/papers/`): in-depth write-ups of *why*,
+  complementing this document's *what/when*: engine and workspace
+  architecture, hint/solver design, and a design-notes survey of
+  FreeCell solution strategies.
+- **Podcast script** (`docs/podcast-script.md`): a conversational
+  transcript about the project, meant to be fed into a text-to-speech or
+  AI podcast-generation tool of the reader's choice.

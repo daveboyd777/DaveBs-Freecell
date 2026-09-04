@@ -1,0 +1,941 @@
+//! egui/eframe desktop/web/Android UI for DaveB's Freecell (issue #8, #9,
+//! and the Android build).
+//!
+//! Shares the exact same `Store`/engine as the text CLI and the ratatui
+//! TUI: no move rules live here. Board rendering reads `GameState` directly
+//! every frame; the only UI-only state that feeds into it is
+//! `FreecellApp::selected`, which drives legal-destination dimming and the
+//! selected-run highlight the same way the TUI does (issue #7), by asking
+//! [`freecell::GameState::can_move`] and
+//! [`freecell::GameState::movable_run_len`] rather than reimplementing any
+//! move rule.
+//!
+//! Mouse input is click-to-select-then-click-to-move, identical to the
+//! TUI's mouse handling: click a location to select it, click a second
+//! location to dispatch the move, click the same location again to
+//! deselect. There is no textual move-command input in the GUI; a toolbar
+//! of buttons covers undo/redo/auto-play/restart/new-game instead.
+//!
+//! This crate is a library (rather than the plain binary it was before the
+//! Android build) so it can produce two different artifacts from the same
+//! app code: `main.rs`'s native/wasm binary, and a `cdylib` with an
+//! `android_main` entry point that `cargo-apk` packages into an APK.
+//! `main.rs` only contains the thinnest possible glue calling into
+//! [`run_native`]/[`run_web`] below.
+
+mod board;
+// Unavailable on Android -- see the `plotters` dependency comment in
+// Cargo.toml for why.
+#[cfg(not(target_os = "android"))]
+mod charts;
+
+use eframe::egui;
+use egui::{Align2, Color32, FontId, Pos2, Sense, Shape, Stroke, StrokeKind, pos2};
+use freecell::stats::{Stats, StatsRecorder};
+use freecell::{Action, GameState, Loc, Store, Suit, replay};
+use std::cell::RefCell;
+use std::rc::Rc;
+// `web_time` mirrors `std::time`'s API but is backed by JS `Date`/
+// `Performance.now()` on wasm32 (issue #9), where `std::time::SystemTime`
+// panics at runtime. One import works correctly on both targets.
+use web_time::{SystemTime, UNIX_EPOCH};
+
+fn random_seed() -> u32 {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(1);
+    nanos % 32000 + 1
+}
+
+/// Parses a `seed` value out of the page's `?key=value&...` query string
+/// (issue #20), e.g. `"?seed=1234"` -> `Some(1234)`. `None` covers every
+/// way this can legitimately be absent: no `window`/`location` (should
+/// never happen in a browser, but this is not worth a panic over), no
+/// query string at all, no `seed` key, or a `seed` value that doesn't
+/// parse as a `u32` -- all of which fall back to `random_seed()` at the
+/// call site exactly like a plain, parameter-less page load.
+#[cfg(target_arch = "wasm32")]
+fn seed_from_url_query() -> Option<u32> {
+    let search = eframe::web_sys::window()?.location().search().ok()?;
+    search
+        .strip_prefix('?')?
+        .split('&')
+        .find_map(|pair| pair.strip_prefix("seed="))
+        .and_then(|value| value.parse().ok())
+}
+
+/// Render a location the same way the CLI's/TUI's move grammar spells it,
+/// for the action-log line (e.g. `Loc::Free(1)` -> "b").
+fn loc_char(loc: Loc) -> char {
+    match loc {
+        Loc::Cascade(i) => (b'1' + i as u8) as char,
+        Loc::Free(i) => (b'a' + i as u8) as char,
+        Loc::Foundation => 'h',
+    }
+}
+
+fn describe(action: Action) -> String {
+    match action {
+        Action::Deal { seed } => format!("Deal #{seed}"),
+        Action::Move { from, to } => format!("Move {}{}", loc_char(from), loc_char(to)),
+        Action::AutoPlay => "AutoPlay".to_string(),
+        Action::Undo => "Undo".to_string(),
+        Action::Redo => "Redo".to_string(),
+        Action::Restart => "Restart".to_string(),
+    }
+}
+
+/// Application state that is *not* part of [`freecell::GameState`]: the
+/// running `Store`, the replay log, and purely presentational state
+/// (selection, status message, the new-game seed text field).
+struct FreecellApp {
+    store: Store,
+    original_seed: u32,
+    log: Rc<RefCell<Vec<Action>>>,
+    /// The replay-proof message, computed once and cached the moment a win
+    /// is detected in `dispatch`, mirroring the TUI's caching (rather than
+    /// recomputing -- and replaying the whole action log -- on every frame
+    /// the win screen is up).
+    replay_result: Option<String>,
+    selected: Option<Loc>,
+    status: Option<String>,
+    seed_input: String,
+    /// Store subscriber that records every finished game (issue #11),
+    /// shared with the CLI and TUI via `freecell::stats::StatsRecorder`.
+    /// Kept as a field (rather than only captured by the subscriber
+    /// closure in `FreecellApp::new`) so `eframe::App::on_exit` can call
+    /// `StatsRecorder::finalize_on_exit` when the window closes.
+    stats: Rc<RefCell<StatsRecorder>>,
+    /// Whether the statistics charts window (issue #14) is open. Always
+    /// `false` and never toggled on Android (no `charts` module there).
+    #[cfg(not(target_os = "android"))]
+    show_charts: bool,
+    /// Rendered chart textures, `[win_rate_trend, move_count_distribution]`.
+    /// Regenerated on demand (opening the window, or its own "Refresh"
+    /// button) rather than every frame -- `plotters` rendering is cheap at
+    /// this scale, but there's no reason to redo it 60 times a second for
+    /// data that only changes when a game finishes.
+    #[cfg(not(target_os = "android"))]
+    chart_textures: Option<[egui::TextureHandle; 2]>,
+}
+
+impl FreecellApp {
+    fn new(seed: u32) -> Self {
+        let mut store = Store::new(seed);
+        let log: Rc<RefCell<Vec<Action>>> = Rc::new(RefCell::new(Vec::new()));
+        let log_for_subscriber = Rc::clone(&log);
+        // Store-subscriber wiring (issue #3/#6's pattern, reused here):
+        // every successfully dispatched action is recorded here,
+        // independent of the board rendering (which reads `store.state()`
+        // directly).
+        store.subscribe(move |_state, action| {
+            log_for_subscriber.borrow_mut().push(*action);
+        });
+
+        // Store subscriber that records every finished game to the OS data
+        // directory (issue #11), shared with the CLI and TUI via
+        // `freecell::stats::StatsRecorder` so all three contribute to the
+        // same persisted history. On wasm32 (issue #9) and Android,
+        // `default_stats_path` always returns `None` -- there is no OS
+        // data directory in a browser sandbox or this minimal Android
+        // build -- so stats are still tracked in-memory for the session
+        // but nothing persists across restarts.
+        let stats_path = freecell::stats::default_stats_path();
+        let persisted = stats_path
+            .as_deref()
+            .map(Stats::load_or_default)
+            .unwrap_or_default();
+        let stats = Rc::new(RefCell::new(StatsRecorder::new(
+            seed, persisted, stats_path,
+        )));
+        let stats_for_subscriber = Rc::clone(&stats);
+        store.subscribe(move |state, action| {
+            stats_for_subscriber.borrow_mut().observe(state, action);
+        });
+
+        Self {
+            store,
+            original_seed: seed,
+            log,
+            replay_result: None,
+            selected: None,
+            status: None,
+            seed_input: String::new(),
+            stats,
+            #[cfg(not(target_os = "android"))]
+            show_charts: false,
+            #[cfg(not(target_os = "android"))]
+            chart_textures: None,
+        }
+    }
+
+    /// Re-render both charts from the current stats and upload them as
+    /// fresh egui textures, replacing any previous ones.
+    #[cfg(not(target_os = "android"))]
+    fn refresh_chart_textures(&mut self, ctx: &egui::Context) {
+        let stats = self.stats.borrow();
+        let history = stats.stats().history();
+        let win_rate_image = charts::win_rate_trend_image(history);
+        let move_count_image = charts::move_count_distribution_image(history);
+        drop(stats);
+
+        let options = egui::TextureOptions::default();
+        self.chart_textures = Some([
+            ctx.load_texture("win-rate-trend", win_rate_image, options),
+            ctx.load_texture("move-count-distribution", move_count_image, options),
+        ]);
+    }
+
+    /// Save one chart to a file next to `stats.json` (issue #14). Native
+    /// desktop only: there is no OS data directory -- or a sensible place
+    /// to save a file at all -- in a browser sandbox (issue #9) or this
+    /// minimal Android build.
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+    fn export_chart(&mut self, win_rate: bool, png: bool) {
+        let dir = freecell::stats::default_stats_path().and_then(|p| p.parent().map(Into::into));
+        let Some(dir): Option<std::path::PathBuf> = dir else {
+            self.status = Some("Could not determine where to save the chart.".to_string());
+            return;
+        };
+
+        let stats = self.stats.borrow();
+        let history = stats.stats().history();
+        let name = match (win_rate, png) {
+            (true, true) => "win-rate-trend.png",
+            (true, false) => "win-rate-trend.svg",
+            (false, true) => "move-count-distribution.png",
+            (false, false) => "move-count-distribution.svg",
+        };
+        let path = dir.join(name);
+        let result: Result<(), Box<dyn std::error::Error>> = match (win_rate, png) {
+            (true, true) => charts::export_win_rate_trend_png(history, &path),
+            (true, false) => charts::export_win_rate_trend_svg(history, &path),
+            (false, true) => charts::export_move_count_distribution_png(history, &path),
+            (false, false) => charts::export_move_count_distribution_svg(history, &path),
+        };
+        drop(stats);
+
+        self.status = Some(match result {
+            Ok(()) => format!("Saved {}", path.display()),
+            Err(e) => format!("Failed to save {name}: {e}"),
+        });
+    }
+
+    /// The statistics charts window (issue #14): win-rate trend and
+    /// move-count distribution, plus native-desktop-only PNG/SVG export.
+    /// Button clicks are collected while the window's closure only *reads*
+    /// `self.chart_textures`, then acted on afterward, to avoid borrowing
+    /// `self` both immutably (for the images) and mutably (to export or
+    /// refresh) at once.
+    #[cfg(not(target_os = "android"))]
+    fn draw_charts_window(&mut self, ctx: &egui::Context) {
+        if !self.show_charts {
+            return;
+        }
+
+        let mut open = true;
+        let mut refresh_clicked = false;
+        #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+        let mut export_clicked: Option<(bool, bool)> = None;
+
+        egui::Window::new("Statistics Charts")
+            .open(&mut open)
+            .resizable(true)
+            .show(ctx, |ui| {
+                if ui.button("Refresh").clicked() {
+                    refresh_clicked = true;
+                }
+                match &self.chart_textures {
+                    Some(textures) => {
+                        ui.label("Win Rate Trend");
+                        ui.image(&textures[0]);
+                        #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+                        ui.horizontal(|ui| {
+                            if ui.button("Export PNG").clicked() {
+                                export_clicked = Some((true, true));
+                            }
+                            if ui.button("Export SVG").clicked() {
+                                export_clicked = Some((true, false));
+                            }
+                        });
+
+                        ui.separator();
+
+                        ui.label("Move-Count Distribution");
+                        ui.image(&textures[1]);
+                        #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+                        ui.horizontal(|ui| {
+                            if ui.button("Export PNG").clicked() {
+                                export_clicked = Some((false, true));
+                            }
+                            if ui.button("Export SVG").clicked() {
+                                export_clicked = Some((false, false));
+                            }
+                        });
+                    }
+                    None => {
+                        ui.label("No chart data yet.");
+                    }
+                }
+            });
+
+        self.show_charts = open;
+        if !open {
+            self.chart_textures = None; // release the textures once closed
+        } else if refresh_clicked {
+            self.refresh_chart_textures(ctx);
+        }
+        #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+        if let Some((win_rate, png)) = export_clicked {
+            self.export_chart(win_rate, png);
+        }
+    }
+
+    fn dispatch(&mut self, action: Action) {
+        match self.store.dispatch(action) {
+            Ok(()) => self.status = None,
+            Err(e) => self.status = Some(format!("Error: {e}")),
+        }
+        if self.store.state().is_won() {
+            if self.replay_result.is_none() {
+                let summary = replay_summary(self);
+                self.replay_result = Some(summary);
+            }
+        } else {
+            self.replay_result = None;
+        }
+    }
+
+    /// Click-to-select-then-click-to-move handling, identical in spirit to
+    /// the TUI's `handle_click` (issue #6/#7).
+    fn handle_click(&mut self, loc: Loc) {
+        match self.selected.take() {
+            None => self.selected = Some(loc),
+            Some(from) if from == loc => self.selected = None,
+            Some(from) => self.dispatch(Action::Move { from, to: loc }),
+        }
+    }
+
+    fn draw_toolbar(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            if ui.button("Undo").clicked() {
+                self.dispatch(Action::Undo);
+            }
+            if ui.button("Redo").clicked() {
+                self.dispatch(Action::Redo);
+            }
+            if ui.button("Auto-Play").clicked() {
+                let before = self.store.game().moves_played();
+                self.dispatch(Action::AutoPlay);
+                // `dispatch` already set `self.status` to an error message
+                // if the store rejected the action; only overwrite it with
+                // the count on an actual success (mirrors the TUI).
+                if self.status.is_none() {
+                    let sent = self.store.game().moves_played() - before;
+                    self.status = Some(format!("Sent {sent} card(s) home."));
+                }
+            }
+            if ui.button("Restart").clicked() {
+                self.dispatch(Action::Restart);
+            }
+            // Both may take a moment (issue #13): the solver isn't
+            // guaranteed to be instant, and neither egui nor this app has
+            // any background-thread/async plumbing yet, so the UI briefly
+            // freezes while either runs -- accepted for now as an
+            // explicit, on-demand action rather than something automatic.
+            if ui
+                .button("Hint")
+                .on_hover_text("Suggest a move (may take a moment)")
+                .clicked()
+            {
+                self.status = Some(match freecell::analysis::hint(self.store.state()) {
+                    Some((from, to)) => format!("Hint: try {}{}", loc_char(from), loc_char(to)),
+                    None => "No hint available right now.".to_string(),
+                });
+            }
+            if ui
+                .button("Report")
+                .on_hover_text("Grade this attempt so far (may take a moment)")
+                .clicked()
+            {
+                let report = freecell::analysis::grade(self.store.game());
+                self.status = Some(describe_report(&report));
+            }
+            #[cfg(not(target_os = "android"))]
+            if ui.button("Charts").clicked() {
+                self.show_charts = !self.show_charts;
+                if self.show_charts {
+                    self.refresh_chart_textures(ui.ctx());
+                } else {
+                    self.chart_textures = None;
+                }
+            }
+            ui.separator();
+            ui.label("Seed:");
+            ui.add(egui::TextEdit::singleline(&mut self.seed_input).desired_width(60.0));
+            if ui.button("New Game").clicked() {
+                let seed = self
+                    .seed_input
+                    .trim()
+                    .parse::<u32>()
+                    .unwrap_or_else(|_| random_seed());
+                self.dispatch(Action::Deal { seed });
+            }
+        });
+    }
+
+    fn draw_status(&self, ui: &mut egui::Ui) {
+        let seed = self.store.game().seed().unwrap_or(self.original_seed);
+        let moves = self.store.game().moves_played();
+        let mut text = format!("Game #{seed}   moves: {moves}");
+        if self.store.state().is_won() {
+            text.push_str("   *** WON ***");
+        }
+        ui.label(text);
+
+        if let Some(status) = &self.status {
+            ui.colored_label(Color32::from_rgb(200, 90, 0), status);
+        }
+
+        let recent: Vec<Action> = self
+            .log
+            .borrow()
+            .iter()
+            .rev()
+            .take(3)
+            .rev()
+            .copied()
+            .collect();
+        if !recent.is_empty() {
+            let log_line = recent
+                .iter()
+                .map(|&a| describe(a))
+                .collect::<Vec<_>>()
+                .join("  ");
+            ui.label(format!("Log: {log_line}"));
+        }
+
+        if let Some(result) = &self.replay_result {
+            ui.label(result);
+        }
+    }
+
+    fn draw_board(&mut self, ui: &mut egui::Ui) {
+        let area = ui.available_rect_before_wrap();
+        let layout = board::layout(area);
+
+        // One interactive region for the whole board; the exact clicked
+        // `Loc` is resolved via `board::hit_test`, mirroring the TUI's
+        // single hit-test-per-click approach (issue #6/#7) rather than one
+        // widget per slot.
+        let response = ui.interact(area, ui.id().with("gui-board"), Sense::click());
+        let clicked = response
+            .clicked()
+            .then(|| response.interact_pointer_pos())
+            .flatten()
+            .and_then(|pos| board::hit_test(&layout, pos));
+
+        let state = self.store.state();
+
+        for (i, &rect) in layout.free_cells.iter().enumerate() {
+            let loc = Loc::Free(i);
+            let slot = slot_style(self.selected, state, loc);
+            match state.freecells()[i] {
+                Some(card) => draw_card(ui.painter(), rect, card, false),
+                None => draw_empty_slot(ui.painter(), rect, slot == SlotStyle::Illegal),
+            }
+            draw_slot_overlay(ui.painter(), rect, slot);
+        }
+
+        // Foundations are addressed collectively (`Loc::Foundation` picks
+        // the pile by suit), so every displayed pile shares one legality
+        // classification, matching the TUI (issue #7).
+        let foundation_slot = slot_style(self.selected, state, Loc::Foundation);
+        for (i, &rect) in layout.foundations.iter().enumerate() {
+            draw_foundation(ui.painter(), rect, i, state.foundations()[i]);
+            draw_slot_overlay(ui.painter(), rect, foundation_slot);
+        }
+
+        for (i, &column) in layout.cascades.iter().enumerate() {
+            let loc = Loc::Cascade(i);
+            let slot = slot_style(self.selected, state, loc);
+            let cards = &state.cascades()[i];
+            let run_len = if self.selected == Some(loc) {
+                state.movable_run_len(loc)
+            } else {
+                0
+            };
+            if cards.is_empty() {
+                let slot_rect = board::card_rect_in_cascade(column, 0);
+                draw_empty_slot(ui.painter(), slot_rect, slot == SlotStyle::Illegal);
+            } else {
+                for (idx, &card) in cards.iter().enumerate() {
+                    let rect = board::card_rect_in_cascade(column, idx);
+                    let highlighted = cards.len() - idx <= run_len;
+                    draw_card(ui.painter(), rect, card, highlighted);
+                }
+            }
+            let occupied = board::cascade_occupied_rect(column, cards.len());
+            draw_slot_overlay(ui.painter(), occupied, slot);
+        }
+
+        if let Some(loc) = clicked {
+            self.handle_click(loc);
+        }
+    }
+}
+
+/// How a board slot's overlay should render, given the current selection.
+/// `Illegal` is only ever produced for a slot other than the selected one
+/// (see `slot_style`) -- the selected slot is always `Selected`, never run
+/// through the legality check.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SlotStyle {
+    Selected,
+    Illegal,
+    Normal,
+}
+
+/// Classify a candidate destination `loc` relative to `selected`, using
+/// [`freecell::GameState::can_move`] as the single source of truth for
+/// legality (issue #7) -- this function never reimplements a move rule.
+/// Always `Normal` when nothing is selected.
+fn slot_style(selected: Option<Loc>, state: &GameState, loc: Loc) -> SlotStyle {
+    match selected {
+        Some(s) if s == loc => SlotStyle::Selected,
+        Some(s) => {
+            if state.can_move(s, loc).is_ok() {
+                SlotStyle::Normal
+            } else {
+                SlotStyle::Illegal
+            }
+        }
+        None => SlotStyle::Normal,
+    }
+}
+
+fn draw_slot_overlay(painter: &egui::Painter, rect: egui::Rect, slot: SlotStyle) {
+    match slot {
+        SlotStyle::Selected => {
+            painter.rect_stroke(
+                rect,
+                6.0,
+                Stroke::new(3.0, Color32::from_rgb(255, 195, 0)),
+                StrokeKind::Outside,
+            );
+        }
+        SlotStyle::Illegal => {
+            painter.rect_filled(rect, 6.0, Color32::from_black_alpha(120));
+        }
+        SlotStyle::Normal => {}
+    }
+}
+
+fn draw_card(painter: &egui::Painter, rect: egui::Rect, card: freecell::Card, highlighted: bool) {
+    let background = if highlighted {
+        Color32::from_rgb(255, 244, 190)
+    } else {
+        Color32::WHITE
+    };
+    painter.rect_filled(rect, 6.0, background);
+    painter.rect_stroke(
+        rect,
+        6.0,
+        Stroke::new(1.0, Color32::DARK_GRAY),
+        StrokeKind::Inside,
+    );
+    let color = suit_color(card.suit);
+    let rank = rank_label(card.rank);
+
+    // Two-corner index (rank + a real suit pip) like an actual card, plus
+    // a large center pip. The bottom-right corner isn't rotated 180
+    // degrees -- `Painter::text` has no cheap glyph-flip -- but it still
+    // reads as a card index rather than a flat two-character code.
+    painter.text(
+        rect.left_top() + egui::vec2(6.0, 4.0),
+        Align2::LEFT_TOP,
+        rank,
+        FontId::proportional(16.0),
+        color,
+    );
+    draw_pip(
+        painter,
+        rect.left_top() + egui::vec2(14.0, 32.0),
+        7.0,
+        card.suit,
+        color,
+    );
+
+    painter.text(
+        rect.right_bottom() - egui::vec2(6.0, 4.0),
+        Align2::RIGHT_BOTTOM,
+        rank,
+        FontId::proportional(16.0),
+        color,
+    );
+    draw_pip(
+        painter,
+        rect.right_bottom() - egui::vec2(14.0, 32.0),
+        7.0,
+        card.suit,
+        color,
+    );
+
+    draw_pip(painter, rect.center(), 18.0, card.suit, color);
+}
+
+fn draw_empty_slot(painter: &egui::Painter, rect: egui::Rect, dimmed: bool) {
+    let color = if dimmed {
+        Color32::from_gray(90)
+    } else {
+        Color32::GRAY
+    };
+    painter.rect_stroke(rect, 6.0, Stroke::new(1.5, color), StrokeKind::Inside);
+}
+
+fn draw_foundation(painter: &egui::Painter, rect: egui::Rect, suit_index: usize, rank: u8) {
+    painter.rect_filled(rect, 6.0, Color32::from_gray(235));
+    painter.rect_stroke(
+        rect,
+        6.0,
+        Stroke::new(1.0, Color32::DARK_GRAY),
+        StrokeKind::Inside,
+    );
+    let suit = suit_from_index(suit_index);
+    if rank == 0 {
+        // Empty pile: a dimmed outline-weight pip for the suit it will
+        // eventually collect, no rank -- nothing has landed here yet.
+        draw_pip(painter, rect.center(), 14.0, suit, Color32::from_gray(170));
+        return;
+    }
+    let color = suit_color(suit);
+    painter.text(
+        rect.left_top() + egui::vec2(6.0, 4.0),
+        Align2::LEFT_TOP,
+        rank_label(rank),
+        FontId::proportional(14.0),
+        color,
+    );
+    draw_pip(painter, rect.center(), 16.0, suit, color);
+}
+
+/// Map a foundation pile index (`Suit as usize`, matching
+/// [`freecell::GameState::foundations`]'s indexing) back to the `Suit` it
+/// represents. Mirrors the CLI's/TUI's own hardcoded C/D/H/S ordering.
+fn suit_from_index(i: usize) -> Suit {
+    match i {
+        0 => Suit::Clubs,
+        1 => Suit::Diamonds,
+        2 => Suit::Hearts,
+        3 => Suit::Spades,
+        _ => unreachable!("foundation index is always 0..4"),
+    }
+}
+
+fn suit_color(suit: Suit) -> Color32 {
+    if suit.is_red() {
+        Color32::from_rgb(190, 20, 20)
+    } else {
+        Color32::BLACK
+    }
+}
+
+/// The corner index label for a rank, spelling out "10" the way a real
+/// card does rather than the CLI/TUI's single-character `T`.
+fn rank_label(rank: u8) -> &'static str {
+    const LABELS: [&str; 13] = [
+        "A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K",
+    ];
+    LABELS[(rank - 1) as usize]
+}
+
+/// Draw a real vector suit pip rather than a font glyph, so it renders
+/// identically regardless of the active font's suit-symbol coverage. This
+/// is the "full icon" upgrade from the plain two-character card code: a
+/// genuine club/diamond/heart/spade shape built from circles and filled
+/// triangles, centered at `center` and sized to fit within roughly a
+/// `2*r`-wide box. No image assets or network fetch required.
+fn draw_pip(painter: &egui::Painter, center: Pos2, r: f32, suit: Suit, color: Color32) {
+    match suit {
+        Suit::Diamonds => draw_diamond(painter, center, r, color),
+        Suit::Hearts => draw_heart(painter, center, r, color),
+        Suit::Spades => draw_spade(painter, center, r, color),
+        Suit::Clubs => draw_club(painter, center, r, color),
+    }
+}
+
+fn draw_diamond(painter: &egui::Painter, center: Pos2, r: f32, color: Color32) {
+    let points = vec![
+        pos2(center.x, center.y - r),
+        pos2(center.x + r * 0.7, center.y),
+        pos2(center.x, center.y + r),
+        pos2(center.x - r * 0.7, center.y),
+    ];
+    painter.add(Shape::convex_polygon(points, color, Stroke::NONE));
+}
+
+fn draw_heart(painter: &egui::Painter, center: Pos2, r: f32, color: Color32) {
+    let lobe_r = r * 0.5;
+    let lobe_y = center.y - lobe_r * 0.4;
+    painter.circle_filled(pos2(center.x - lobe_r * 0.85, lobe_y), lobe_r, color);
+    painter.circle_filled(pos2(center.x + lobe_r * 0.85, lobe_y), lobe_r, color);
+    let points = vec![
+        pos2(center.x - r * 0.95, lobe_y + lobe_r * 0.15),
+        pos2(center.x + r * 0.95, lobe_y + lobe_r * 0.15),
+        pos2(center.x, center.y + r),
+    ];
+    painter.add(Shape::convex_polygon(points, color, Stroke::NONE));
+}
+
+fn draw_spade(painter: &egui::Painter, center: Pos2, r: f32, color: Color32) {
+    // An upside-down heart plus a small stem: the classic spade shape.
+    let lobe_r = r * 0.45;
+    let lobe_y = center.y + r * 0.15;
+    painter.circle_filled(pos2(center.x - lobe_r * 0.85, lobe_y), lobe_r, color);
+    painter.circle_filled(pos2(center.x + lobe_r * 0.85, lobe_y), lobe_r, color);
+    let points = vec![
+        pos2(center.x - r * 0.85, lobe_y + lobe_r * 0.2),
+        pos2(center.x + r * 0.85, lobe_y + lobe_r * 0.2),
+        pos2(center.x, center.y - r),
+    ];
+    painter.add(Shape::convex_polygon(points, color, Stroke::NONE));
+    let stem = egui::Rect::from_center_size(
+        pos2(center.x, center.y + r * 0.8),
+        egui::vec2(r * 0.22, r * 0.5),
+    );
+    painter.rect_filled(stem, 0.0, color);
+}
+
+fn draw_club(painter: &egui::Painter, center: Pos2, r: f32, color: Color32) {
+    let lobe_r = r * 0.42;
+    painter.circle_filled(pos2(center.x, center.y - lobe_r * 0.9), lobe_r, color);
+    painter.circle_filled(
+        pos2(center.x - lobe_r * 0.95, center.y + lobe_r * 0.35),
+        lobe_r,
+        color,
+    );
+    painter.circle_filled(
+        pos2(center.x + lobe_r * 0.95, center.y + lobe_r * 0.35),
+        lobe_r,
+        color,
+    );
+    let stem = egui::Rect::from_center_size(
+        pos2(center.x, center.y + r * 0.8),
+        egui::vec2(r * 0.2, r * 0.55),
+    );
+    painter.rect_filled(stem, 0.0, color);
+}
+
+/// Summarize a `freecell::analysis::GameReport` (issue #13) into one
+/// compact status line: moves played vs. the solver's best line from the
+/// original deal, where a losing attempt went wrong (if anywhere), and
+/// which foundations stalled.
+fn describe_report(report: &freecell::analysis::GameReport) -> String {
+    use freecell::solver::Solvability;
+    let best_line = match &report.best_line {
+        Solvability::Solvable(moves) => format!("best line {}", moves.len()),
+        Solvability::Unsolvable => "never winnable".to_string(),
+        Solvability::Unknown => "best line unknown".to_string(),
+    };
+    let went_wrong = match report.first_unsolvable_move {
+        Some(0) => "unwinnable from the start".to_string(),
+        Some(i) => format!("went wrong at move {i}"),
+        None => "still winnable".to_string(),
+    };
+    const SUIT_CHARS: [char; 4] = ['C', 'D', 'H', 'S'];
+    let foundations: Vec<String> = report
+        .foundations
+        .iter()
+        .enumerate()
+        .map(|(i, &r)| {
+            if r == 0 {
+                format!("{}-", SUIT_CHARS[i])
+            } else {
+                format!("{}{}", SUIT_CHARS[i], rank_label(r))
+            }
+        })
+        .collect();
+    format!(
+        "{} moves | {best_line} | {went_wrong} | {}",
+        report.moves_played,
+        foundations.join(" ")
+    )
+}
+
+/// The `(seed, actions)` replay proof issues #5/#6 ask for, adapted for the
+/// GUI status area: replaying the action log from the original seed must
+/// reproduce the exact current game.
+fn replay_summary(app: &FreecellApp) -> String {
+    let actions = app.log.borrow();
+    match replay(app.original_seed, &actions) {
+        Ok(rebuilt) if &rebuilt == app.store.game() => {
+            "Replay verified: (seed, actions) reproduces this win.".to_string()
+        }
+        Ok(_) => "Replay produced a different game (this is a bug).".to_string(),
+        Err(e) => format!("Replay failed: {e} (this is a bug)."),
+    }
+}
+
+impl eframe::App for FreecellApp {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        egui::CentralPanel::default().show(ui, |ui| {
+            self.draw_toolbar(ui);
+            ui.separator();
+            self.draw_status(ui);
+            ui.separator();
+            self.draw_board(ui);
+        });
+        #[cfg(not(target_os = "android"))]
+        self.draw_charts_window(ui.ctx());
+    }
+
+    /// Closes issue #11's quit-detection gap for the GUI: record the
+    /// in-progress game as a loss, if it's a genuine unfinished attempt,
+    /// when the window closes. `eframe`'s `glow` feature is off (this
+    /// crate's default `wgpu` renderer is used instead), so `App::on_exit`
+    /// takes no `glow::Context` argument here.
+    fn on_exit(&mut self) {
+        self.stats.borrow_mut().finalize_on_exit();
+    }
+}
+
+/// Native desktop entry point, called by `main.rs`'s `fn main` (issue #8).
+/// Deliberately takes no arguments and does its own `argv` parsing so
+/// `main.rs` stays a one-line call -- keeping all real logic in this
+/// library crate is what lets the Android build (a `cdylib` built from
+/// this same crate, see [`android_main`] below) share it.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn run_native() -> eframe::Result<()> {
+    let seed = std::env::args()
+        .nth(1)
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or_else(random_seed);
+
+    let options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default().with_inner_size([880.0, 760.0]),
+        ..Default::default()
+    };
+    eframe::run_native(
+        "DaveB's Freecell",
+        options,
+        Box::new(move |_cc| Ok(Box::new(FreecellApp::new(seed)))),
+    )
+}
+
+/// Browser entry point (issue #9), called by `main.rs`'s `fn main`,
+/// mirroring `eframe`'s own documented web usage: install the web logger,
+/// grab the `<canvas id="the_canvas_id">` from `gui/index.html`, and start
+/// `WebRunner` inside a spawned local future (`WebRunner::start` is async;
+/// a plain `wasm32` `main` cannot be). A `?seed=1234` URL parameter deals
+/// that specific game instead of a random one (issue #20): the web stats
+/// dashboard's replay links open this page with the deal's seed in the URL
+/// this way, since "New Game" alone gives no way to land on a specific
+/// deal from an external link.
+#[cfg(target_arch = "wasm32")]
+pub fn run_web() {
+    use eframe::wasm_bindgen::JsCast as _;
+
+    eframe::WebLogger::init(log::LevelFilter::Debug).ok();
+
+    let seed = seed_from_url_query().unwrap_or_else(random_seed);
+    let web_options = eframe::WebOptions::default();
+
+    wasm_bindgen_futures::spawn_local(async move {
+        let document = eframe::web_sys::window()
+            .expect("no window")
+            .document()
+            .expect("no document");
+
+        let canvas = document
+            .get_element_by_id("the_canvas_id")
+            .expect("failed to find #the_canvas_id")
+            .dyn_into::<eframe::web_sys::HtmlCanvasElement>()
+            .expect("#the_canvas_id was not a canvas element");
+
+        let start_result = eframe::WebRunner::new()
+            .start(
+                canvas,
+                web_options,
+                Box::new(move |_cc| Ok(Box::new(FreecellApp::new(seed)))),
+            )
+            .await;
+
+        if let Some(loading_text) = document.get_element_by_id("loading_text") {
+            match start_result {
+                Ok(()) => loading_text.remove(),
+                Err(e) => {
+                    loading_text.set_inner_html(
+                        "<p>The app has crashed. See the browser developer console for details.</p>",
+                    );
+                    panic!("failed to start eframe: {e:?}");
+                }
+            }
+        }
+    });
+}
+
+/// Android entry point: a locally-buildable, sideload-only debug APK (no
+/// Play Store publishing). `cargo-apk` builds this crate's `cdylib`
+/// target (see `Cargo.toml`'s `[lib]`/`[package.metadata.android]`) and
+/// looks up this exact symbol name by convention (the `android-activity`
+/// crate's `GameActivity` backend, selected via the `android-game-activity`
+/// Cargo feature -- see the `[target.'cfg(target_os = "android")']`
+/// dependency section) to start the app when the activity launches.
+///
+/// Random deal only: there is no `argv` (native) or URL (web) to read a
+/// seed from on Android. Stats don't persist between runs here --
+/// `default_stats_path` returns `None` on this target, the same graceful
+/// in-memory-only fallback wasm32 already uses (see `FreecellApp::new`).
+#[cfg(target_os = "android")]
+#[unsafe(no_mangle)]
+fn android_main(app: winit::platform::android::activity::AndroidApp) {
+    android_logger::init_once(
+        android_logger::Config::default().with_max_level(log::LevelFilter::Info),
+    );
+
+    let options = eframe::NativeOptions {
+        android_app: Some(app),
+        ..Default::default()
+    };
+    let seed = random_seed();
+
+    if let Err(e) = eframe::run_native(
+        "DaveB's Freecell",
+        options,
+        Box::new(move |_cc| Ok(Box::new(FreecellApp::new(seed)))),
+    ) {
+        log::error!("eframe::run_native failed: {e:?}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rank_label_spells_out_ten_and_uses_single_letters_elsewhere() {
+        assert_eq!(rank_label(1), "A");
+        assert_eq!(rank_label(9), "9");
+        assert_eq!(rank_label(10), "10");
+        assert_eq!(rank_label(11), "J");
+        assert_eq!(rank_label(13), "K");
+    }
+
+    #[test]
+    fn suit_color_is_red_for_hearts_and_diamonds_only() {
+        assert_eq!(suit_color(Suit::Hearts), Color32::from_rgb(190, 20, 20));
+        assert_eq!(suit_color(Suit::Diamonds), Color32::from_rgb(190, 20, 20));
+        assert_eq!(suit_color(Suit::Clubs), Color32::BLACK);
+        assert_eq!(suit_color(Suit::Spades), Color32::BLACK);
+    }
+
+    #[test]
+    fn suit_from_index_matches_the_foundations_array_ordering() {
+        // Same C/D/H/S-by-index convention the CLI and TUI hardcode.
+        assert_eq!(suit_from_index(0), Suit::Clubs);
+        assert_eq!(suit_from_index(1), Suit::Diamonds);
+        assert_eq!(suit_from_index(2), Suit::Hearts);
+        assert_eq!(suit_from_index(3), Suit::Spades);
+    }
+}
