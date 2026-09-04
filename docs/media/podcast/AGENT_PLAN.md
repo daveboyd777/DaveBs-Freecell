@@ -5,6 +5,12 @@
 the ZCode session that built the video. This document lets any agent
 verify, reproduce, or extend that work without that session's context.
 
+**Status update (2026-09-04, later the same day):** everything in this plan
+is now done — PR merged (with a follow-up fix commit for real path/logic
+bugs found while verifying it), release published, checksums verified. See
+[`NEXT_TASK.md`](NEXT_TASK.md) in this same folder for what comes after this
+plan, rather than re-running the checklist below.
+
 ## 1. What exists (product references)
 
 All products were produced on 2026-09-04 on DESKTOP (`C:\Users\daveboyd\Desktop\`)
