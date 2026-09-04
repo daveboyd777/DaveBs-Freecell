@@ -1,0 +1,4 @@
+# Media for the video podcast docs — track via LFS
+docs/media/podcast/**/*.mp4 filter=lfs diff=lfs merge=lfs -text
+docs/media/podcast/**/*.mp3 filter=lfs diff=lfs merge=lfs -text
+docs/media/podcast/*.mp4 filter=lfs diff=lfs merge=lfs -text

@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1920px; height: 1080px; background: #0d0c0a; }
+  body { font-family: Bahnschrift, 'Segoe UI', sans-serif; color: #d8d2c2; display: flex; align-items: center; justify-content: center; }
+  .frame { position: absolute; inset: 60px; border: 3px solid #d8d2c2; }
+  .frame2 { position: absolute; inset: 78px; border: 1px solid #8a8474; }
+  .content { text-align: center; }
+  .the-end { font-size: 130px; font-weight: 300; letter-spacing: 26px; color: #e9e3d3; text-transform: uppercase; }
+  .rule { display: flex; align-items: center; justify-content: center; gap: 24px; margin: 48px 0 40px; }
+  .rule .line { width: 260px; height: 1px; background: #8a8474; }
+  .rule .dia { width: 14px; height: 14px; background: #d8d2c2; transform: rotate(45deg); }
+  .credit { font-size: 28px; letter-spacing: 6px; color: #a49e8c; text-transform: uppercase; line-height: 2.3; }
+  .credit b { color: #cfc9b8; font-weight: 400; }
+</style>
+</head>
+<body>
+  <div class="frame"></div><div class="frame2"></div>
+  <div class="content">
+    <div class="the-end">The End</div>
+    <div class="rule"><div class="line"></div><div class="dia"></div><div class="line"></div></div>
+    <div class="credit">
+      Built in Rust · tested first · one engine, four faces<br>
+      <b>daveb’s freecell</b> — every column laid out and dealt
+    </div>
+  </div>
+</body>
+</html>

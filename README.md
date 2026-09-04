@@ -188,6 +188,15 @@ photo with a voice clone of Dave Boyd's own voice, and Nora from a Myrna
 Loy lookalike. A plain two-host cut for a straight audio podcast is
 included as an appendix.
 
+## Video tour
+
+That script has been produced: an 11-minute black-and-white video podcast
+that walks through the whole project — engine, store, statistics,
+solver, and all four interfaces:
+
+- **Watch/download:** [Video Podcast release](https://github.com/daveboyd777/DaveBs-Freecell/releases/tag/podcast-2026-09-04)
+- **Background, credits, and rebuild sources:** [docs/media/podcast/PODCAST.md](docs/media/podcast/PODCAST.md)
+
 ## Maintenance automation
 
 - **GitHub Actions CI** builds, lints, and runs the full test suite on every

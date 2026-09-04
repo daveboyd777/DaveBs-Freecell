@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1920px; height: 1080px; background: #f4f2ec; font-family: 'Segoe UI', sans-serif; color: #2b2f36; }
+  .wrap { padding: 70px 90px; }
+  h1 { font-family: Georgia, serif; font-weight: normal; font-size: 44px; letter-spacing: .5px; }
+  .sub { color: #7a7f88; font-size: 20px; margin: 8px 0 40px; }
+  .grid { display: grid; grid-template-columns: 1fr 460px; gap: 40px; }
+  .panel { background: #fff; border: 1px solid #e2ded2; border-radius: 12px; padding: 34px 38px; box-shadow: 0 6px 24px rgba(60,55,40,.08); }
+  .panel h2 { font-size: 21px; font-weight: 600; color: #3c4250; margin-bottom: 4px; }
+  .panel .note { font-size: 15px; color: #9aa0ab; margin-bottom: 22px; }
+  .kpis { display: flex; gap: 34px; margin-bottom: 44px; }
+  .kpi { background: #fff; border: 1px solid #e2ded2; border-radius: 12px; padding: 22px 34px; min-width: 220px; }
+  .kpi .v { font-family: Georgia, serif; font-size: 46px; color: #1f242c; }
+  .kpi .l { font-size: 15px; color: #8a8f99; margin-top: 2px; }
+  .tt { position: absolute; background: #2b2f36; color: #f4f2ec; font-size: 16px; padding: 10px 16px; border-radius: 8px; pointer-events: none; box-shadow: 0 8px 20px rgba(0,0,0,.25); }
+  .tt b { color: #e8c96a; }
+  .toast { position: absolute; right: 110px; top: 150px; background: #3d5a42; color: #eef4ea; padding: 16px 26px; border-radius: 10px; font-size: 18px; box-shadow: 0 10px 26px rgba(30,50,35,.35); }
+  .legend { display: flex; gap: 26px; font-size: 15px; color: #6d737d; margin-top: 18px; }
+  .sw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 8px; vertical-align: -1px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>FreeCell Dashboard</h1>
+  <div class="sub">static export · versioned format v3 · rendered client-side, computed in Rust &nbsp;·&nbsp; daveb.local/freecell</div>
+  <div class="kpis">
+    <div class="kpi"><div class="v" id="kpi-rate">61.4%</div><div class="l">win rate (247 games)</div></div>
+    <div class="kpi"><div class="v">9</div><div class="l">current streak</div></div>
+    <div class="kpi"><div class="v">21</div><div class="l">longest win run</div></div>
+    <div class="kpi"><div class="v">118</div><div class="l">median moves, wins</div></div>
+  </div>
+  <div class="grid">
+    <div class="panel" style="position:relative">
+      <h2>Win-rate trend</h2>
+      <div class="note">rolling 20-game average · click a point to reopen that numbered deal</div>
+      <svg id="chart" width="1150" height="480" viewBox="0 0 1150 480"></svg>
+      <div class="legend"><span><span class="sw" style="background:#4a6b4f"></span>won</span><span><span class="sw" style="background:#b33327"></span>lost</span><span><span class="sw" style="background:#4a6b4f;opacity:.35"></span>rolling avg</span></div>
+      <div class="tt" id="tt"><b>Game #17901</b> — won · 118 moves<br>8 Aug 2026 · click to reopen deal</div>
+    </div>
+    <div class="panel">
+      <h2>Game length</h2>
+      <div class="note">moves per game, wins vs losses</div>
+      <svg id="hist" width="400" height="480" viewBox="0 0 400 480"></svg>
+    </div>
+  </div>
+</div>
+<script>
+// deterministic pseudo-data
+let seed = 17901; const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+const games = []; let wins = 0;
+for (let i = 0; i < 60; i++) {
+  const won = rnd() < 0.55 + i * 0.002;
+  if (won) wins++;
+  games.push({ won, moves: Math.round((won ? 105 : 150) + (rnd() - .5) * 70) });
+}
+const svg = (id) => document.getElementById(id);
+const NS = 'http://www.w3.org/2000/svg';
+const el = (t, a) => { const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); return e; };
+const c = svg('chart');
+c.appendChild(el('line', { x1: 40, y1: 430, x2: 1130, y2: 430, stroke: '#d8d3c4', 'stroke-width': 2 }));
+[0, .25, .5, .75, 1].forEach(f => c.appendChild(el('line', { x1: 40, y1: 430 - f * 380, x2: 1130, y2: 430 - f * 380, stroke: '#eceada', 'stroke-width': 1 })));
+let path = '', run = 0, cnt = 0;
+games.forEach((g, i) => {
+  const x = 50 + i * 18;
+  c.appendChild(el('circle', { cx: x, cy: 430 - (g.won ? 10 : 415), r: g.won ? 7 : 7, fill: g.won ? '#4a6b4f' : '#b33327', opacity: .85 }));
+  run += g.won ? 1 : 0; cnt++;
+  if (cnt >= 5) { const y = 430 - (run / cnt) * 380; path += (path ? 'L' : 'M') + x + ' ' + y.toFixed(1) + ' '; if (cnt === 5) {} run = 0; cnt = 0; }
+});
+c.appendChild(el('path', { d: path, fill: 'none', stroke: '#4a6b4f', 'stroke-width': 4, opacity: .35 }));
+const h = svg('hist');
+const bins = [0,0,0,0,0,0], binsL = [0,0,0,0,0,0];
+games.forEach(g => { const b = Math.min(5, Math.max(0, Math.floor((g.moves - 80) / 35))); (g.won ? bins : binsL)[b]++; });
+const bw = 30;
+bins.forEach((v, i) => {
+  const x = 30 + i * 62;
+  h.appendChild(el('rect', { x, y: 420 - v * 26, width: bw, height: v * 26, fill: '#4a6b4f', opacity: .85, rx: 3 }));
+  h.appendChild(el('rect', { x: x + bw + 3, y: 420 - binsL[i] * 26, width: bw, height: binsL[i] * 26, fill: '#b33327', opacity: .7, rx: 3 }));
+});
+h.appendChild(el('line', { x1: 20, y1: 421, x2: 390, y2: 421, stroke: '#d8d3c4', 'stroke-width': 2 }));
+['80', '115', '150', '185', '220', '255+'].forEach((t, i) => {
+  const tx = el('text', { x: 32 + i * 62, y: 448, 'font-size': 14, fill: '#9aa0ab' }); tx.textContent = t; h.appendChild(tx);
+});
+// position tooltip on the highlighted point (index 42)
+const tt = document.getElementById('tt');
+tt.style.left = '660px'; tt.style.top = '120px';
+const params = new URLSearchParams(location.search);
+if (params.get('s') === '1') {
+  tt.style.display = 'none';
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.textContent = 'Reopening deal #17901…';
+  document.body.appendChild(toast);
+}
+</script>
+</body>
+</html>
