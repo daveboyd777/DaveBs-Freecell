@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1920px; height: 1080px; background: #101418; }
+  body { display: flex; align-items: center; justify-content: center; font-family: 'Cascadia Mono', Consolas, 'Courier New', monospace; }
+  .window { width: 1480px; background: #0a0e12; border-radius: 10px; box-shadow: 0 30px 80px rgba(0,0,0,.6); overflow: hidden; border: 1px solid #2a343e; }
+  .titlebar { height: 44px; background: #1c242c; display: flex; align-items: center; padding: 0 18px; gap: 10px; }
+  .dot { width: 14px; height: 14px; border-radius: 50%; background: #3a4650; }
+  .title { color: #8fa3b3; font-size: 17px; margin-left: 14px; letter-spacing: .5px; }
+  .term { padding: 34px 44px 46px; font-size: 27px; line-height: 1.32; color: #c8d6e0; }
+  .dim { color: #5c6f80; }
+  .red { color: #d98a7d; }
+  .amber { color: #d9b36a; }
+  .prompt { color: #7fbf7f; }
+  .cursor { display: inline-block; width: 15px; height: 30px; background: #c8d6e0; vertical-align: text-bottom; animation: blink 1.1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+</style>
+</head>
+<body>
+<div class="window">
+  <div class="titlebar"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="title">freecell — 80×24</div></div>
+  <div class="term" id="term"></div>
+</div>
+<script>
+const board = (state) => state.split('\n').map(line => {
+  let html = line
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/(Game #|moves: )/g, m => `<span class="amber">${m}</span>`)
+    .replace(/\b([2-9]|[ATJQK])[HDCS]\b/g, m =>
+      /[HD]/.test(m) ? `<span class="red">${m}</span>` : `<span class="dim">${m}</span>`)
+    .replace(/^(free|home)/, m => `<span class="amber">${m}</span>`);
+  return html;
+}).join('\n');
+const states = [
+`Game #17901   moves: 0
+free  a:__ b:__ c:__ d:__    home  C- D- H- S-
+
+   1   2   3   4   5   6   7   8
+   TS  6H  3D  2D  5S  AH  8D  9H
+   JC  KD  AS  4D  2C  8C  JS  JD
+   9S  5H  KC  QC  4C  4H  QS  TC
+   AC  KS  9D  5C  TD  6C  2H  7D
+   KH  QH  3S  6D  JH  9C  7S  6S
+   2S  QD  8S  TH  AD  7H  7C  3H
+   5D  3C  4S  8H`,
+`Game #17901   moves: 3
+free  a:7C b:7H c:__ d:__    home  C- DA H- S-
+
+   1   2   3   4   5   6   7   8
+   TS  6H  3D  2D  5S  AH  8D  9H
+   JC  KD  AS  4D  2C  8C  JS  JD
+   9S  5H  KC  QC  4C  4H  QS  TC
+   AC  KS  9D  5C  TD  6C  2H  7D
+   KH  QH  3S  6D  JH  9C  7S  6S
+   2S  QD  8S  TH              3H
+   5D  3C  4S  8H`
+];
+const params = new URLSearchParams(location.search);
+const idx = Math.min(states.length - 1, parseInt(params.get('s') || '0'));
+document.getElementById('term').innerHTML = board(states[idx]) + '\n\n<span class="prompt">&gt;</span> <span class="cursor"></span>';
+</script>
+</body>
+</html>

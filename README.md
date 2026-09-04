@@ -119,6 +119,15 @@ See [ROADMAP.md](ROADMAP.md) for the continuous-improvement plan: Redux-style
 state management, a richer visual interface, and self-analysis / statistics
 modules tracking the classic FreeCell stats.
 
+## Video tour
+
+Prefer watching to reading? There's an 11-minute black-and-white video
+podcast that walks through the whole project — engine, store, statistics,
+solver, and all four interfaces — in the style of *The Thin Man*:
+
+- **Watch/download:** [Video Podcast release](https://github.com/daveboyd777/DaveBs-Freecell/releases/tag/podcast-2026-09-04)
+- **Background, credits, and rebuild sources:** [docs/media/podcast/PODCAST.md](docs/media/podcast/PODCAST.md)
+
 ## Maintenance automation
 
 - **GitHub Actions CI** builds, lints, and runs the full test suite on every

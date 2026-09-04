@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1920px; height: 1080px; background: #23272e; font-family: 'Segoe UI', sans-serif; }
+  body { display: flex; align-items: center; justify-content: center; }
+  .app { width: 1500px; background: #2b3038; border-radius: 8px; overflow: hidden; box-shadow: 0 30px 90px rgba(0,0,0,.55); border: 1px solid #3a414b; }
+  .titlebar { height: 46px; background: #1f2329; display: flex; align-items: center; padding: 0 20px; gap: 10px; }
+  .dot { width: 14px; height: 14px; border-radius: 50%; background: #3d454f; }
+  .title { color: #aeb9c4; font-size: 17px; margin-left: 14px; }
+  .menubar { height: 42px; background: #333941; display: flex; align-items: center; gap: 26px; padding: 0 22px; color: #c4ced8; font-size: 17px; }
+  .toolbar { height: 58px; background: #2b3038; border-bottom: 1px solid #1f2329; display: flex; align-items: center; gap: 14px; padding: 0 22px; }
+  button { font-family: inherit; font-size: 17px; padding: 8px 22px; border-radius: 5px; border: 1px solid #4a5560; background: #3a424c; color: #dbe4ec; cursor: default; }
+  button.primary { background: #4a6b4f; border-color: #5d8263; color: #eaf3ea; }
+  button.hinted { background: #5a4a2f; border-color: #8a6d3f; }
+  .status { color: #8b97a3; font-size: 16px; margin-left: auto; }
+  .table { padding: 38px 44px 30px; display: flex; flex-direction: column; gap: 26px; background: #1d3a2a; }
+  .row { display: flex; justify-content: space-between; }
+  .cell { width: 130px; height: 176px; border-radius: 10px; border: 2px dashed #4e6a58; }
+  .cell.occ { border: none; }
+  .card { width: 130px; height: 176px; border-radius: 10px; background: #f5f2ea; box-shadow: 0 4px 12px rgba(0,0,0,.35); position: relative; font-family: Georgia, serif; }
+  .card .r { position: absolute; top: 10px; left: 14px; font-size: 30px; font-weight: bold; }
+  .card .s { position: absolute; bottom: 8px; right: 14px; font-size: 34px; }
+  .red { color: #a33327; } .blk { color: #22262b; }
+  .card .glyph { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-size: 58px; opacity: .18; }
+  .card.sel { outline: 4px solid #e8c96a; outline-offset: 2px; }
+  .arrow { position: absolute; font-size: 44px; color: #e8c96a; }
+  .hintbox { position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); background: rgba(20,24,20,.92); border: 1px solid #6b7d5f; color: #e4ead9; padding: 12px 26px; border-radius: 8px; font-size: 18px; letter-spacing: .3px; }
+  .statusbar { height: 40px; background: #1f2329; color: #7f8b96; font-size: 15px; display: flex; align-items: center; padding: 0 20px; gap: 30px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="titlebar"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="title">DaveB's Freecell — Game #17901</div></div>
+  <div class="menubar"><span>Game</span><span>Move</span><span>Solve</span><span>Stats</span><span>Help</span></div>
+  <div class="toolbar">
+    <button class="primary">New Deal</button>
+    <button class="hinted" id="hintbtn">Hint</button>
+    <button class="primary">Report</button>
+    <button>Undo</button>
+    <button>Auto-play</button>
+    <span class="status">moves: 3 &nbsp;·&nbsp; seed 17901 &nbsp;·&nbsp; engine v0.9</span>
+  </div>
+  <div class="table" style="position:relative">
+    <div class="row">
+      <div class="cell occ"><div class="card"><span class="r blk">7</span><span class="glyph">♣</span><span class="s blk">♣</span></div></div>
+      <div class="cell occ"><div class="card"><span class="r red">7</span><span class="glyph">♥</span><span class="s red">♥</span></div></div>
+      <div class="cell"></div><div class="cell"></div>
+      <div style="width:130px"></div>
+      <div class="cell occ"><div class="card"><span class="r blk">A</span><span class="glyph">♣</span><span class="s blk">♣</span></div></div>
+      <div class="cell occ"><div class="card"><span class="r red">A</span><span class="glyph">♦</span><span class="s red">♦</span></div></div>
+      <div class="cell"></div><div class="cell"></div>
+    </div>
+    <div class="row">
+      <div class="cell occ" style="position:relative"><div class="card"><span class="r blk">T</span><span class="glyph">♠</span><span class="s blk">♠</span></div><div class="card" style="position:absolute;top:34px"><span class="r blk">J</span><span class="glyph">♣</span><span class="s blk">♣</span></div><div class="card" style="position:absolute;top:68px"><span class="r blk">9</span><span class="glyph">♠</span><span class="s blk">♠</span></div></div>
+      <div class="cell occ"><div class="card"><span class="r red">6</span><span class="glyph">♥</span><span class="s red">♥</span></div></div>
+      <div class="cell occ"><div class="card"><span class="r red">3</span><span class="glyph">♦</span><span class="s red">♦</span></div></div>
+      <div class="cell occ"><div class="card"><span class="r red">2</span><span class="glyph">♦</span><span class="s red">♦</span></div></div>
+      <div class="cell occ"><div class="card"><span class="r blk">5</span><span class="glyph">♠</span><span class="s blk">♠</span></div></div>
+      <div class="cell occ"><div class="card"><span class="r red">A</span><span class="glyph">♥</span><span class="s red">♥</span></div></div>
+      <div class="cell occ"><div class="card"><span class="r red">8</span><span class="glyph">♦</span><span class="s red">♦</span></div></div>
+      <div class="cell occ"><div class="card sel" id="dst"><span class="r red">9</span><span class="glyph">♥</span><span class="s red">♥</span></div></div>
+    </div>
+    <div class="hintbox" id="hint">Hint: move T♠ (column 1) onto 9♥ (column 8) &nbsp;—&nbsp; search budget 3&nbsp;k nodes</div>
+  </div>
+  <div class="statusbar"><span>Rust engine · pure · no I/O</span><span>WASM build</span><span style="margin-left:auto">solver: idle</span></div>
+</div>
+<script>
+const params = new URLSearchParams(location.search);
+if (params.get('s') === '1') { document.getElementById('hintbtn').classList.add('hinted'); }
+</script>
+</body>
+</html>
