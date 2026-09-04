@@ -18,9 +18,16 @@ for the agent-executable workflow. Quick map:
 | `audio-dialogue/` | the 45 synthesized lines (MP3, 24 kHz) — regenerate with `synthesize.js` |
 | `clips/` | the 8 paid generated clips ($5.32 total) |
 
-Not checked in (regenerable, large): 48 kHz rubberband-shifted Nick WAVs
-(one ffmpeg pass over `audio-dialogue/*_nick.mp3`, see `mix.js` input paths),
-`work/` intermediates, `frames/`, `qa/`, `node_modules/`.
+Not checked in (regenerable, large): an optional 48 kHz rubberband-shifted
+WAV pass over Nick's lines (`audio-dialogue/shifted/segNN_nick.wav`) --
+`build.js` prefers it when present but falls back to the checked-in
+`audio-dialogue/*_nick.mp3` directly, so a fresh clone builds correctly
+without it; `work/` intermediates, `frames/`, `qa/`, `node_modules/`. Also
+not checked in, and required before a rebuild that exercises the AI-clip
+generation or the Ken Burns crossfade fallback in `build.js`'s `renderFace`:
+`work/dave_1280.jpg` and `work/deb_1280.jpg`, the two source photos (Dave
+Boyd, and the Nora lookalike) -- personal images, supply your own.
 
-Environment needs: Node 20+, npm (dep: msedge-tts), ffmpeg with rubberband,
-Microsoft Edge, `XAI_API_KEY` for clip regeneration only.
+Environment needs: Node 20+, npm (dep: msedge-tts), ffmpeg (rubberband only
+needed for the optional WAV pass above), Microsoft Edge (or set `EDGE_PATH`),
+`XAI_API_KEY` for clip regeneration only.

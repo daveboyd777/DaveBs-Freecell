@@ -39,9 +39,20 @@ const composePad = (out) =>
    [fg][out]overlay=(W-w)/2:(H-h)/2,setsar=1,settb=AVTB,fps=${FPS}[${out}]`;
 
 // ---------- build timeline ----------
-const audioFor = (seg) => (seg.type === 'nick')
-  ? `audio/shifted/seg${String(seg.id).padStart(2, '0')}_nick.wav`
-  : `audio/seg${String(seg.id).padStart(2, '0')}_nora.mp3`;
+// Checked-in lines live flat under audio-dialogue/segNN_{type}.mp3. If an
+// optional rubberband pitch-shift pass has been run on Nick's lines (see
+// production/README.md), its output at audio-dialogue/shifted/segNN_nick.wav
+// is preferred when present -- but a fresh clone with only the checked-in
+// MP3s still builds correctly without that extra, undocumented-as-a-script
+// step.
+const audioFor = (seg) => {
+  const id = String(seg.id).padStart(2, '0');
+  if (seg.type === 'nick') {
+    const shifted = `audio-dialogue/shifted/seg${id}_nick.wav`;
+    if (fs.existsSync(shifted)) return shifted;
+  }
+  return `audio-dialogue/seg${id}_${seg.type}.mp3`;
+};
 
 const timeline = [];
 let nickCount = 0, noraCount = 0;
@@ -49,8 +60,10 @@ let nickCount = 0, noraCount = 0;
 const push = (o) => timeline.push(o);
 
 // opening cards
+// The 8 paid AI clips live in clips/ (checked in), not video/ -- see
+// production/README.md's contents table.
 push({ kind: 'title', img: 'images/title_open.png', dur: 6.5, voice: null });
-push({ kind: 'clip', clip: 'video/establish.mp4', dur: 8.0, voice: null, full: true });
+push({ kind: 'clip', clip: 'clips/establish.mp4', dur: 8.0, voice: null, full: true });
 
 for (const seg of dialogue.segments) {
   if (seg.type === 'nick' || seg.type === 'nora') {
@@ -60,8 +73,8 @@ for (const seg of dialogue.segments) {
     const variant = (seg.type === 'nick' ? nickCount++ : noraCount++) % 2 === 0 ? 'a' : 'b';
     push({ kind: 'face', who: seg.type, variant, dur, voice: { file: af, offset: 0.15, dur: adur }, seg });
   } else if (seg.type === 'asta') {
-    const map = { 5: ['video/asta1.mp4', 1.0], 19: ['video/asta2.mp4', 0.8], 50: ['video/asta3.mp4', 0.4] };
-    const [clip, from] = map[seg.id] || ['video/asta1.mp4', 0.8];
+    const map = { 5: ['clips/asta1.mp4', 1.0], 19: ['clips/asta2.mp4', 0.8], 50: ['clips/asta3.mp4', 0.4] };
+    const [clip, from] = map[seg.id] || ['clips/asta1.mp4', 0.8];
     push({ kind: 'clip', clip, dur: 3.5, from, voice: null });
   } else if (seg.type === 'broll') {
     const map = {
@@ -126,7 +139,11 @@ function renderBroll(i, s) {
 function renderFace(i, s) {
   const out = `work/seg${String(i).padStart(3, '0')}.mp4`;
   const isNick = s.who === 'nick';
-  const clipFile = isNick ? `video/nick_${s.variant}.mp4` : `video/nora_${s.variant}.mp4`;
+  const clipFile = isNick ? `clips/nick_${s.variant}.mp4` : `clips/nora_${s.variant}.mp4`;
+  // Only reached if a dialogue line runs longer than its AI clip (crossfade
+  // into a Ken Burns pan on a still); not exercised by the current 51-segment
+  // build, but needs these two source photos (Dave Boyd / the Nora lookalike)
+  // under work/ if it ever is -- see production/README.md's environment note.
   const photo = isNick ? 'work/dave_1280.jpg' : 'work/deb_1280.jpg';
   const clipDur = probe(clipFile);
   const fgH = H; // full height

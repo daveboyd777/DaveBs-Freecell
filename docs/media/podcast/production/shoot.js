@@ -1,6 +1,9 @@
 const { execFileSync } = require('child_process');
 const path = require('path');
-const edge = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
+// Override via EDGE_PATH if Edge is installed elsewhere, or just on PATH
+// (e.g. `EDGE_PATH=msedge node shoot.js` on a machine where it resolves
+// without an absolute path).
+const edge = process.env.EDGE_PATH || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const shots = [
   ['html/title_open.html', 'images/title_open.png'],
   ['html/title_end.html', 'images/title_end.png'],

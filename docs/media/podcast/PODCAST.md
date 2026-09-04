@@ -80,15 +80,22 @@ regenerating paid clips). From `production/`:
 
 ```sh
 npm install                       # msedge-tts
-node analyze-voice.js             # measure the reference voice sample
-node synthesize.js                # all dialogue lines -> audio/
+node analyze-voice.js path/to/your/sample.wav   # measure the reference voice sample
+node synthesize.js                # all dialogue lines -> audio-dialogue/
 node shoot.js                     # HTML cards/B-roll -> images/
-bash queue-videos.sh              # Asta + establishing (xAA API) -> video/
-bash queue-faces.sh               # talking-head clips (xAI API) -> video/
+bash queue-videos.sh              # Asta + establishing -> prints xAI request IDs (see note below)
+bash queue-faces.sh               # talking-head clips -> prints xAI request IDs (see note below)
 node build.js                     # 54 segments -> concat -> silent film
 node mix.js                       # voice placement + pan + bed + loudnorm
 ffmpeg -i ../work/film_video.mp4 -i ../work/mix.m4a -c copy -movflags +faststart out.mp4
 ```
+
+`queue-videos.sh`/`queue-faces.sh` only *submit* the async xAI
+generation jobs and print each one's request ID -- neither script polls
+for completion or downloads the result. Once a job finishes, fetch its
+video and save it as `clips/<name>.mp4` (matching the `queue`/`queue_face`
+call's first argument, e.g. `nick_a`) before running `build.js`, which
+reads directly from `clips/`.
 
 Every stage is deterministic given the same inputs (seeded noise, fixed
 deal #17901), except the xAI generations — those are re-rolls.

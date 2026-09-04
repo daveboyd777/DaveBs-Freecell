@@ -1,8 +1,18 @@
 // Analyze Dave's voice sample: median fundamental frequency (F0), estimated
 // speaking rate, and level — used to pick and tune the Nick TTS voice.
+// Usage: node analyze-voice.js [path/to/sample.wav]
+// The reference recording is personal audio and was never checked into the
+// repo (see docs/media/podcast/AGENT_PLAN.md §1) -- supply your own via a
+// CLI arg or the VOICE_SAMPLE_PATH env var; the default below only matches
+// the original build machine's layout as a documented example.
 const fs = require('fs');
 
-const path = 'C:/Users/daveboyd/Desktop/davevoicesample.wav';
+const path = process.argv[2] || process.env.VOICE_SAMPLE_PATH || 'C:/Users/daveboyd/Desktop/davevoicesample.wav';
+if (!fs.existsSync(path)) {
+  console.error(`Voice sample not found: ${path}`);
+  console.error('Pass a path as the first argument, or set VOICE_SAMPLE_PATH.');
+  process.exit(1);
+}
 const buf = fs.readFileSync(path);
 
 // Parse WAV header (PCM 16-bit mono 44.1k per ffprobe)
