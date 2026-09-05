@@ -38,7 +38,14 @@ resolve (distribution model, content/engine separation, cost-tracking
 integration, the async-generation polling gap, and how this relates to the
 wiki.js effort).
 
-**One thing that needs the operator, not an agent:** backlog item #12 flags
-that "cousins wiki" isn't an identified project in either repo checked so
-far — confirm with Dave what that refers to before finalizing the
-cross-project scope of the proposal.
+**~~One thing that needs the operator, not an agent~~ — resolved
+2026-09-05.** Backlog item #12 flagged that "cousins wiki" wasn't an
+identified project. Dave confirmed: it is the `DaveBs-Wiki` repo
+(`github.com/daveboyd777/DaveBs-Wiki`, cloned locally at
+`C:\Users\daveboyd\Desktop\rustwiki`), a sibling project to DaveBs-Freecell
+and OSv2. The shared documentation/media-generation module infrastructure
+lives in OSv2, with FreeCell and `DaveBs-Wiki` as sibling consumers — and
+this repo's video podcast is the reference instantiation of that pipeline,
+to be instantiated for OSv2's own use as the next task. Recorded in
+AIMaster-OS-v2 PR [#198](https://github.com/daveboyd777/AIMaster-OS-v2/pull/198)
+(item #12 in `docs/backlog.md` remains the canonical write-up).
