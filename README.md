@@ -211,6 +211,15 @@ solver, and all four interfaces:
   auto-merge on their own once CI passes.
 - **CodeRabbit** (AI code review, free for open-source) reviews every pull
   request — configuration in [`.coderabbit.yaml`](.coderabbit.yaml).
+- **GrokBot AI reviews, on demand only** — [`grokbot-ai`](https://github.com/grokbot-ai)
+  is a collaborator (write) and can review any PR on request from
+  AIMaster-OS-v2 (`aimaster review:grok <pr> --repo DaveBs-Freecell`; each
+  review costs ~$0.04–0.08 of xAI spend, billed against AIMaster-OS-v2's
+  single shared $15/month grokbot review budget). **Do not add
+  `* @grokbot-ai` to a `.github/CODEOWNERS` file here**: auto-requesting a
+  review on *every* PR — including the weekly Dependabot bumps that
+  auto-merge on their own — would silently compound paid reviews against
+  that shared cap. Request one manually when a PR deserves it.
 
 ## License
 
