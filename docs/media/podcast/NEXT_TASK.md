@@ -1,7 +1,9 @@
 # Next task — rehydration pointer
 
-**For:** ZCode (or any agent picking this up), written 2026-09-04 at the end
-of the session that finished and merged the video work below.
+**For:** ZCode (or any agent picking this up), written 2026-09-04, updated
+2026-09-06 to close out section 2 below (it originally pointed at open
+work that has since been completed and merged — see the update note there
+before acting on the rest of this file).
 
 ## 1. Status of the video work: done, nothing pending here
 
@@ -21,31 +23,35 @@ Nothing here needs re-verification or re-work. `AGENT_PLAN.md` and
 `PODCAST.md` in this same folder are the historical record of that task,
 kept as-is.
 
-## 2. The actual next task lives in AIMaster-OS-v2's backlog
+## 2. UPDATE 2026-09-06 — this item is CLOSED, not open work
 
-The operator's next task — proposing (not yet implementing) a shared
+The module described below has been **proposed, corrected, implemented, and
+merged**. Do not re-propose or re-scope it — read the closeout first:
+
+- **`daveboyd777/AIMaster-OS-v2`'s `docs/backlog.md` item #12** — status
+  now CLOSED, cross-linking the story and archive tag below.
+- **Closeout story:** `docs/stories/story-mediagen-module-2026-09-06.md`
+  in that repo — what was asked, 5 corrections made to the original
+  proposal (most notably: `DaveBs-Wiki` page slugs must match `[a-z0-9-]`
+  exactly, and the cost-ledger `source` field has no `"mediaGen"` value),
+  what was implemented, verification results, and what's explicitly left
+  as follow-on work (converting this repo's `production/` into a real
+  content pack/manifest, an actual OSv2 overview video, face/broll segment
+  rendering, and a scheduled poll loop).
+- **Usage/reference doc:** `docs/specs/media-gen.md` in that repo — the
+  manifest schema and CLI (`aimaster mediaGen ...`) to use for any
+  follow-on work, rather than the original scripts in this repo's own
+  `production/` (superseded, kept here for history only).
+- **Archive tag:** `archive/mediagen-module` on `daveboyd777/AIMaster-OS-v2`.
+
+**Original context below, for history — superseded by the above:**
+
+The operator's task was proposing (not yet implementing) a shared
 documentation/media-generation module, generalizing the tools in
 `production/` for use by OSv2 itself, the planned self-hosted wiki, and
-FreeCell — is written up in full as **item #12** in
-`daveboyd777/AIMaster-OS-v2`'s `docs/backlog.md`.
-
-That's the canonical version; this file deliberately doesn't duplicate its
-content (to avoid the two drifting apart) — go read it there. It covers:
-the reference-implementation inventory of what each script in `production/`
-actually does generically, the module-convention this repo's own patterns
-suggest following, and five open design questions the proposal needs to
-resolve (distribution model, content/engine separation, cost-tracking
-integration, the async-generation polling gap, and how this relates to the
-wiki.js effort).
-
-**~~One thing that needs the operator, not an agent~~ — resolved
-2026-09-05.** Backlog item #12 flagged that "cousins wiki" wasn't an
-identified project. Dave confirmed: it is the `DaveBs-Wiki` repo
-(`github.com/daveboyd777/DaveBs-Wiki`, cloned locally at
+FreeCell. "Cousins wiki" was confirmed 2026-09-05 to be the `DaveBs-Wiki`
+repo (`github.com/daveboyd777/DaveBs-Wiki`, cloned locally at
 `C:\Users\daveboyd\Desktop\rustwiki`), a sibling project to DaveBs-Freecell
-and OSv2. The shared documentation/media-generation module infrastructure
-lives in OSv2, with FreeCell and `DaveBs-Wiki` as sibling consumers — and
-this repo's video podcast is the reference instantiation of that pipeline,
-to be instantiated for OSv2's own use as the next task. Recorded in
-AIMaster-OS-v2 PR [#198](https://github.com/daveboyd777/AIMaster-OS-v2/pull/198)
-(item #12 in `docs/backlog.md` remains the canonical write-up).
+and OSv2 — not the AIMaster-OS-v2 wiki.js effort. That resolution (recorded
+in AIMaster-OS-v2 PR #198) is itself now superseded by the closeout above:
+the module was implemented and merged the following day.
