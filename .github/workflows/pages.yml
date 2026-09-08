@@ -47,7 +47,7 @@ jobs:
           cp -r dashboard gui/dist/dashboard
           rm -f gui/dist/dashboard/*.test.mjs
       - name: Configure Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
       - name: Upload build output
         uses: actions/upload-pages-artifact@v3
         with:
