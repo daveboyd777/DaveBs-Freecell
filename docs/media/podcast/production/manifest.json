@@ -1,0 +1,663 @@
+{
+  "title": "DaveB's Freecell — A Thin Man Style Video Podcast",
+  "outputName": "freecell-podcast-v2",
+  "project": "davebs-freecell",
+  "voices": {
+    "nick": {
+      "ttsVoice": "en-US-ChristopherNeural",
+      "rateHint": "+3%",
+      "pitchHint": "-12Hz",
+      "gainDb": 2.5,
+      "panLeft": 0.78,
+      "panRight": 0.34,
+      "faceCropWidth": 1080,
+      "backend": "elevenlabs",
+      "providerVoiceId": "zcw3RGTDoNnYivfeJFU5"
+    },
+    "nora": {
+      "ttsVoice": "en-US-JennyNeural",
+      "rateHint": "-4%",
+      "pitchHint": "+0Hz",
+      "gainDb": 0,
+      "panLeft": 0.34,
+      "panRight": 0.78,
+      "faceCropWidth": 608,
+      "faceKeepTopFraction": 0.5,
+      "backend": "msedge"
+    }
+  },
+  "music": {
+    "prompt": "1930s/40s Thin-Man-era light orchestral jazz underscore, mysterious but playful, warm strings and muted brush drums, no vocals",
+    "file": "music/underscore.mp3",
+    "lengthMs": 90000,
+    "gainDb": -14
+  },
+  "segments": [
+    {
+      "id": 1,
+      "kind": "title",
+      "assets": [
+        "images/title_open.png"
+      ],
+      "durationSeconds": 6.5
+    },
+    {
+      "id": 2,
+      "kind": "clip",
+      "assets": [
+        "clips/establish.mp4"
+      ],
+      "clipStartSeconds": 4.7,
+      "durationSeconds": 3.3
+    },
+    {
+      "id": 3,
+      "kind": "face",
+      "speaker": "nora",
+      "assets": [
+        "clips/nora_a.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg01_nora.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 4,
+      "kind": "face",
+      "speaker": "nick",
+      "assets": [
+        "clips/nick_a.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg02_nick.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 5,
+      "kind": "face",
+      "speaker": "nora",
+      "assets": [
+        "clips/nora_b.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg03_nora.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 6,
+      "kind": "face",
+      "speaker": "nick",
+      "assets": [
+        "clips/nick_b.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg04_nick.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 7,
+      "kind": "clip",
+      "assets": [
+        "clips/asta1.mp4"
+      ],
+      "clipStartSeconds": 1,
+      "durationSeconds": 3.5
+    },
+    {
+      "id": 8,
+      "kind": "face",
+      "speaker": "nora",
+      "assets": [
+        "clips/nora_a.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg06_nora.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 9,
+      "kind": "face",
+      "speaker": "nick",
+      "assets": [
+        "clips/nick_a.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg07_nick.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 10,
+      "kind": "face",
+      "speaker": "nora",
+      "assets": [
+        "clips/nora_b.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg08_nora.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 11,
+      "kind": "face",
+      "speaker": "nick",
+      "assets": [
+        "clips/nick_b.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg09_nick.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 12,
+      "kind": "broll",
+      "assets": [
+        "images/broll_term0.png",
+        "images/broll_term1.png"
+      ],
+      "assetDurationsSeconds": [
+        4.2,
+        3.3
+      ]
+    },
+    {
+      "id": 13,
+      "kind": "face",
+      "speaker": "nora",
+      "assets": [
+        "clips/nora_a.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg11_nora.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 14,
+      "kind": "face",
+      "speaker": "nick",
+      "assets": [
+        "clips/nick_a.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg12_nick.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 15,
+      "kind": "face",
+      "speaker": "nora",
+      "assets": [
+        "clips/nora_b.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg13_nora.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 16,
+      "kind": "face",
+      "speaker": "nick",
+      "assets": [
+        "clips/nick_b.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg14_nick.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 17,
+      "kind": "face",
+      "speaker": "nora",
+      "assets": [
+        "clips/nora_a.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg15_nora.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 18,
+      "kind": "face",
+      "speaker": "nick",
+      "assets": [
+        "clips/nick_a.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg16_nick.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 19,
+      "kind": "face",
+      "speaker": "nora",
+      "assets": [
+        "clips/nora_b.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg17_nora.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 20,
+      "kind": "face",
+      "speaker": "nick",
+      "assets": [
+        "clips/nick_b.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg18_nick.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 21,
+      "kind": "clip",
+      "assets": [
+        "clips/asta2.mp4"
+      ],
+      "clipStartSeconds": 0.8,
+      "durationSeconds": 3.5
+    },
+    {
+      "id": 22,
+      "kind": "face",
+      "speaker": "nora",
+      "assets": [
+        "clips/nora_a.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg20_nora.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 23,
+      "kind": "face",
+      "speaker": "nick",
+      "assets": [
+        "clips/nick_a.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg21_nick.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 24,
+      "kind": "face",
+      "speaker": "nora",
+      "assets": [
+        "clips/nora_b.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg22_nora.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 25,
+      "kind": "face",
+      "speaker": "nick",
+      "assets": [
+        "clips/nick_b.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg23_nick.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 26,
+      "kind": "face",
+      "speaker": "nora",
+      "assets": [
+        "clips/nora_a.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg24_nora.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 27,
+      "kind": "face",
+      "speaker": "nick",
+      "assets": [
+        "clips/nick_a.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg25_nick.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 28,
+      "kind": "face",
+      "speaker": "nora",
+      "assets": [
+        "clips/nora_b.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg26_nora.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 29,
+      "kind": "face",
+      "speaker": "nick",
+      "assets": [
+        "clips/nick_b.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg27_nick.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 30,
+      "kind": "face",
+      "speaker": "nora",
+      "assets": [
+        "clips/nora_a.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg28_nora.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 31,
+      "kind": "face",
+      "speaker": "nick",
+      "assets": [
+        "clips/nick_a.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg29_nick.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 32,
+      "kind": "broll",
+      "assets": [
+        "images/broll_gui0.png"
+      ],
+      "assetDurationsSeconds": [
+        7
+      ]
+    },
+    {
+      "id": 33,
+      "kind": "face",
+      "speaker": "nora",
+      "assets": [
+        "clips/nora_b.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg31_nora.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 34,
+      "kind": "face",
+      "speaker": "nick",
+      "assets": [
+        "clips/nick_b.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg32_nick.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 35,
+      "kind": "face",
+      "speaker": "nora",
+      "assets": [
+        "clips/nora_a.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg33_nora.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 36,
+      "kind": "face",
+      "speaker": "nick",
+      "assets": [
+        "clips/nick_a.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg34_nick.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 37,
+      "kind": "face",
+      "speaker": "nora",
+      "assets": [
+        "clips/nora_b.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg35_nora.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 38,
+      "kind": "face",
+      "speaker": "nick",
+      "assets": [
+        "clips/nick_b.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg36_nick.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 39,
+      "kind": "face",
+      "speaker": "nora",
+      "assets": [
+        "clips/nora_a.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg37_nora.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 40,
+      "kind": "face",
+      "speaker": "nick",
+      "assets": [
+        "clips/nick_a.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg38_nick.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 41,
+      "kind": "broll",
+      "assets": [
+        "images/broll_dash0.png",
+        "images/broll_dash1.png"
+      ],
+      "assetDurationsSeconds": [
+        5,
+        3
+      ]
+    },
+    {
+      "id": 42,
+      "kind": "face",
+      "speaker": "nora",
+      "assets": [
+        "clips/nora_b.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg40_nora.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 43,
+      "kind": "face",
+      "speaker": "nick",
+      "assets": [
+        "clips/nick_b.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg41_nick.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 44,
+      "kind": "face",
+      "speaker": "nora",
+      "assets": [
+        "clips/nora_a.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg42_nora.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 45,
+      "kind": "face",
+      "speaker": "nick",
+      "assets": [
+        "clips/nick_a.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg43_nick.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 46,
+      "kind": "face",
+      "speaker": "nora",
+      "assets": [
+        "clips/nora_b.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg44_nora.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 47,
+      "kind": "face",
+      "speaker": "nick",
+      "assets": [
+        "clips/nick_b.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg45_nick.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 48,
+      "kind": "face",
+      "speaker": "nora",
+      "assets": [
+        "clips/nora_a.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg46_nora.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 49,
+      "kind": "face",
+      "speaker": "nick",
+      "assets": [
+        "clips/nick_a.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg47_nick.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 50,
+      "kind": "face",
+      "speaker": "nora",
+      "assets": [
+        "clips/nora_b.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg48_nora.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 51,
+      "kind": "face",
+      "speaker": "nick",
+      "assets": [
+        "clips/nick_b.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg49_nick.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 52,
+      "kind": "clip",
+      "assets": [
+        "clips/asta3.mp4"
+      ],
+      "clipStartSeconds": 0.4,
+      "durationSeconds": 3.5
+    },
+    {
+      "id": 53,
+      "kind": "face",
+      "speaker": "nora",
+      "assets": [
+        "clips/nora_a.mp4"
+      ],
+      "voice": {
+        "file": "audio/seg51_nora.mp3",
+        "offsetSeconds": 0.15
+      }
+    },
+    {
+      "id": 54,
+      "kind": "title",
+      "assets": [
+        "images/title_end.png"
+      ],
+      "durationSeconds": 8
+    }
+  ]
+}

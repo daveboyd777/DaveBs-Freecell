@@ -11,6 +11,22 @@ bugs found while verifying it), release published, checksums verified. See
 [`NEXT_TASK.md`](NEXT_TASK.md) in this same folder for what comes after this
 plan, rather than re-running the checklist below.
 
+---
+
+> **⚠️ SUPERSEDED BY v2 (2026-09-10).** This document describes the original
+> 11:52 build and its now-**retired** in-repo scripts
+> (`build.js`/`mix.js`/`synthesize.js`/`shoot.js`/`queue-videos.sh`/
+> `queue-faces.sh`). The master has since been rebuilt on the **one**
+> production pipeline — the `mediaGen` module in AIMaster-OS-v2, driven by
+> `production/manifest.json`. Current facts: **runtime 11:21**, SHA-256
+> starts **`5b036351cb393e5d`**, release tag **`podcast-v2-2026-09-10`**,
+> and Nick's voice is a **real ElevenLabs clone** of Dave's recording (not
+> pitch-matched). To rebuild, use `aimaster mediaGen run` — see
+> [`PODCAST.md`](PODCAST.md) and [`production/README.md`](production/README.md),
+> not the script commands in §5 below (kept for historical record).
+
+---
+
 ## 1. What exists (product references)
 
 All products were produced on 2026-09-04 on DESKTOP (`C:\Users\daveboyd\Desktop\`)
@@ -92,12 +108,12 @@ gh issue create --repo daveboyd777/DaveBs-Freecell \
 
 ## 6. Known limitations / natural follow-ups
 
-1. **Nick's voice is pitch-matched, not cloned.** The build machine had no
-   voice-cloning service. If an ElevenLabs (or similar) key is added later:
-   `npm i elevenlabs`, replace `synthesize.js`'s Nick path with a clone call
-   using the 52 s reference sample (original at
-   `Desktop\davevoicesample.wav`), re-run `synthesize.js`, `mix.js`, and the
-   final mux — video does not need re-rendering.
+1. **Nick's voice — DONE (v2, 2026-09-10).** Originally pitch-matched
+   because the build machine had no cloning service. Now a **real ElevenLabs
+   Instant voice clone** of Dave's own ~52 s reference recording, produced
+   through the OSv2 `mediaGen` `tts` stage (`voices.nick.backend:
+   "elevenlabs"` in `manifest.json`). The reference `.wav` is kept private
+   in `daveboyd777/AIMaster-OS-v2` under `core/modules/mediaGen/source-data/`.
 2. **LFS bandwidth:** the in-repo master consumes ~290 MB of the 1 GB/month
    free LFS bandwidth per full fetch. Public viewers should use the Release
    asset; the README and PODCAST.md say so.
