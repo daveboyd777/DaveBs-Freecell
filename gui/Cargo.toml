@@ -34,7 +34,7 @@ target_sdk_version = 34
 label = "DaveB's Freecell"
 
 [dependencies]
-egui = "0.36.1"
+egui = "0.37.0"
 freecell = { version = "0.1.0", path = ".." }
 # Cross-platform `SystemTime`/`UNIX_EPOCH`: real time natively, backed by
 # `Date`/`Performance.now()` on wasm32, where `std::time::SystemTime`
