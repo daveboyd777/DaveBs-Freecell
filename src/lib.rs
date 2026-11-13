@@ -109,6 +109,128 @@ fn parse_loc(c: char) -> Option<Loc> {
     }
 }
 
+/// One line of player input, after the shared command grammar is applied.
+///
+/// Front ends (the text CLI and the ratatui TUI) used to each special-case
+/// `n` with `strip_prefix`, which treated every line starting with `n` as a
+/// new deal — `new 617` and `nothing` both started a random game, and a
+/// deal number that did not fit in a `u32` was silently replaced with a
+/// random one. Parsing lives here so both front ends share one grammar and
+/// one set of tests.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Command {
+    /// Blank line: do nothing.
+    Empty,
+    Quit,
+    Help,
+    /// `n` or `new` with no deal number. Parsing stays pure; the caller
+    /// chooses the random seed.
+    NewGame,
+    /// `h`/`hint` — presentation stays with the caller (each front end
+    /// prints its own hint); the grammar lives here so all ends agree.
+    Hint,
+    /// `g`/`report`.
+    Report,
+    Action(Action),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CommandError {
+    Unrecognized(String),
+    /// A deal number was supplied but is not a `u32` (`n abc`, `new -1`,
+    /// `n 99999999999`). This is not a cue to deal a random game.
+    BadDealNumber(String),
+}
+
+impl fmt::Display for CommandError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CommandError::Unrecognized(cmd) => write!(f, "Unrecognized command '{cmd}'"),
+            CommandError::BadDealNumber(raw) => write!(f, "Invalid deal number '{raw}'"),
+        }
+    }
+}
+
+/// Parse a deal number from a text field or the tail of an `n`/`new` command.
+///
+/// Empty (or whitespace-only) input is `Ok(None)`: the caller picks a random
+/// deal. A non-empty value that is not a `u32` is [`CommandError::BadDealNumber`].
+pub fn parse_optional_seed(text: &str) -> Result<Option<u32>, CommandError> {
+    let text = text.trim();
+    if text.is_empty() {
+        Ok(None)
+    } else {
+        text.parse::<u32>()
+            .map(Some)
+            .map_err(|_| CommandError::BadDealNumber(text.to_string()))
+    }
+}
+
+/// Parse one command line. Whitespace is ignored at the ends; matching is
+/// case-insensitive. Move syntax is delegated to [`parse_move`].
+pub fn parse_command(line: &str) -> Result<Command, CommandError> {
+    let line = line.trim().to_lowercase();
+    if line.is_empty() {
+        return Ok(Command::Empty);
+    }
+    match line.as_str() {
+        "q" | "quit" | "exit" => return Ok(Command::Quit),
+        "?" | "help" => return Ok(Command::Help),
+        "u" | "undo" => return Ok(Command::Action(Action::Undo)),
+        "y" | "redo" => return Ok(Command::Action(Action::Redo)),
+        "a" | "auto" => return Ok(Command::Action(Action::AutoPlay)),
+        "r" | "restart" => return Ok(Command::Action(Action::Restart)),
+        "n" | "new" => return Ok(Command::NewGame),
+        "h" | "hint" => return Ok(Command::Hint),
+        "g" | "report" => return Ok(Command::Report),
+        _ => {}
+    }
+
+    if let Some(command) = parse_new_game(&line)? {
+        return Ok(command);
+    }
+
+    match parse_move(&line) {
+        Some((from, to)) => Ok(Command::Action(Action::Move { from, to })),
+        None => Err(CommandError::Unrecognized(line)),
+    }
+}
+
+/// `Some` when `line` is an `n`/`new` command that carries an argument.
+/// `Ok(None)` when it is some other command.
+fn parse_new_game(line: &str) -> Result<Option<Command>, CommandError> {
+    if let Some(rest) = line.strip_prefix("new") {
+        // `new` must be its own word (`new 617`), not a prefix of `newgame`.
+        if rest.starts_with(char::is_whitespace) {
+            return seed_command(rest);
+        }
+        return Ok(None);
+    }
+
+    let Some(rest) = line.strip_prefix('n') else {
+        return Ok(None);
+    };
+    if rest.is_empty() {
+        return Ok(Some(Command::NewGame));
+    }
+    let compact = rest.trim();
+    // `n617` and `n 617` are deal commands. `no` / `nothing` are not —
+    // those used to fall through `strip_prefix('n')` and deal at random.
+    let explicit_argument = rest.starts_with(char::is_whitespace);
+    let digits_only = !compact.is_empty() && compact.chars().all(|c| c.is_ascii_digit());
+    if explicit_argument || digits_only {
+        return seed_command(compact);
+    }
+    Ok(None)
+}
+
+fn seed_command(raw: &str) -> Result<Option<Command>, CommandError> {
+    Ok(Some(match parse_optional_seed(raw)? {
+        Some(seed) => Command::Action(Action::Deal { seed }),
+        None => Command::NewGame,
+    }))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MoveError {
     EmptySource,

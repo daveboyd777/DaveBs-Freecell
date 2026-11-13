@@ -1,6 +1,6 @@
 use freecell::solver::Solvability;
 use freecell::stats::{Stats, StatsRecorder};
-use freecell::{parse_move, replay, Action, Game, Loc, Store};
+use freecell::{parse_command, parse_optional_seed, replay, Action, Command, CommandError, Game, Loc, Store};
 use std::io::{self, BufRead, Write};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -14,10 +14,17 @@ fn main() {
         };
     }
 
-    let original_seed = std::env::args()
-        .nth(1)
-        .and_then(|s| s.parse::<u32>().ok())
-        .unwrap_or_else(random_seed);
+    let original_seed = match std::env::args().nth(1) {
+        Some(arg) => match parse_optional_seed(&arg) {
+            Ok(Some(seed)) => seed,
+            Ok(None) => random_seed(),
+            Err(e) => {
+                eprintln!("{e}.");
+                std::process::exit(2);
+            }
+        },
+        None => random_seed(),
+    };
 
     let stdin = io::stdin();
     let mut lines = stdin.lock().lines();
@@ -96,26 +103,30 @@ fn main() {
         print!("> ");
         io::stdout().flush().ok();
         let line = match lines.next() {
-            Some(Ok(line)) => line.trim().to_lowercase(),
+            Some(Ok(line)) => line,
             _ => break, // EOF
         };
 
-        match line.as_str() {
-            "" => continue,
-            "q" | "quit" | "exit" => break,
-            "?" | "help" => {
+        match parse_command(&line) {
+            Ok(Command::Empty) => continue,
+            Ok(Command::Quit) => break,
+            Ok(Command::Help) => {
                 print_help();
                 continue;
             }
-            "u" | "undo" => {
-                dispatch(&mut store, &mut log, Action::Undo);
+            Ok(Command::Hint) => {
+                print_hint(store.state());
                 continue;
             }
-            "y" | "redo" => {
-                dispatch(&mut store, &mut log, Action::Redo);
+            Ok(Command::Report) => {
+                print_report(store.game());
                 continue;
             }
-            "a" | "auto" => {
+            Ok(Command::NewGame) => {
+                dispatch(&mut store, &mut log, Action::Deal { seed: random_seed() });
+                continue;
+            }
+            Ok(Command::Action(Action::AutoPlay)) => {
                 let before = store.game().moves_played();
                 if dispatch(&mut store, &mut log, Action::AutoPlay) {
                     println!(
@@ -125,32 +136,16 @@ fn main() {
                 }
                 continue;
             }
-            "r" | "restart" => {
-                dispatch(&mut store, &mut log, Action::Restart);
+            Ok(Command::Action(action)) => {
+                dispatch(&mut store, &mut log, action);
                 continue;
             }
-            "h" | "hint" => {
-                print_hint(store.state());
-                continue;
+            Err(CommandError::BadDealNumber(raw)) => {
+                println!("Invalid deal number '{raw}' — not dealing a random game. Type ? for help.");
             }
-            "g" | "report" => {
-                print_report(store.game());
-                continue;
+            Err(e) => {
+                println!("{e} — type ? for help.");
             }
-            _ => {}
-        }
-
-        if let Some(rest) = line.strip_prefix('n') {
-            let new_seed = rest.trim().parse::<u32>().unwrap_or_else(|_| random_seed());
-            dispatch(&mut store, &mut log, Action::Deal { seed: new_seed });
-            continue;
-        }
-
-        match parse_move(&line) {
-            Some((from, to)) => {
-                dispatch(&mut store, &mut log, Action::Move { from, to });
-            }
-            None => println!("Unrecognized command '{line}' — type ? for help."),
         }
     }
 
