@@ -531,7 +531,8 @@ fn rank_char(rank: u8) -> char {
 fn draw_footer(frame: &mut ratatui::Frame, area: Rect, app: &App) {
     if app.show_help {
         let text = "Moves: two chars, source then destination -- 1-8 cascades, a-d free cells, h/f foundations (e.g. 35, 1a, 2h).\n\
-             Commands: a auto-play, u undo, y redo, r restart, n [seed] new game, q quit.\n\
+             Commands: a auto-play, u undo, y redo, r restart, n/new [seed] new game, q quit.\n\
+             A deal number that is not a whole number is rejected, not replaced with a random deal.\n\
              \x20         h hint (may take a moment), g report (may take a moment).\n\
              Mouse: click a location to select it, click again to move there (or the same spot to deselect).\n\
              Press ? to close help.";
