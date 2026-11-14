@@ -385,7 +385,7 @@ fn print_help() {
          \x20 u         undo the last move\n\
          \x20 y         redo the last undone move\n\
          \x20 r         restart this deal\n\
-         \x20 n [seed]  new game (optionally a specific deal number)\n\
+         \x20 n [seed]  new game (`new 617` works too). A bad number is rejected.\n\
          \x20 h         hint: suggest a move (may take a moment)\n\
          \x20 g         report: grade this attempt so far (may take a moment)\n\
          \x20 q         quit\n"
