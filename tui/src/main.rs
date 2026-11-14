@@ -198,7 +198,9 @@ impl App {
                 }
             }
             Ok(Command::Action(Action::Restart)) => self.dispatch(Action::Restart),
-            Ok(Command::NewGame) => self.dispatch(Action::Deal { seed: random_seed() }),
+            Ok(Command::NewGame) => self.dispatch(Action::Deal {
+                seed: random_seed(),
+            }),
             Ok(Command::Hint) => {
                 self.status = Some(match freecell::analysis::hint(self.store.state()) {
                     Some((from, to)) => format!("Hint: try {}{}", loc_char(from), loc_char(to)),

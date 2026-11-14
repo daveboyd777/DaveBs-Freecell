@@ -377,7 +377,9 @@ impl FreecellApp {
             if ui.button("New Game").clicked() {
                 match freecell::parse_optional_seed(&self.seed_input) {
                     Ok(Some(seed)) => self.dispatch(Action::Deal { seed }),
-                    Ok(None) => self.dispatch(Action::Deal { seed: random_seed() }),
+                    Ok(None) => self.dispatch(Action::Deal {
+                        seed: random_seed(),
+                    }),
                     // A typed value that is not a deal number must not be
                     // replaced with a random game.
                     Err(e) => self.status = Some(format!("{e}.")),

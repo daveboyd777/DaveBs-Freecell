@@ -1,6 +1,8 @@
 use freecell::solver::Solvability;
 use freecell::stats::{Stats, StatsRecorder};
-use freecell::{parse_command, parse_optional_seed, replay, Action, Command, CommandError, Game, Loc, Store};
+use freecell::{
+    parse_command, parse_optional_seed, replay, Action, Command, CommandError, Game, Loc, Store,
+};
 use std::io::{self, BufRead, Write};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -123,7 +125,13 @@ fn main() {
                 continue;
             }
             Ok(Command::NewGame) => {
-                dispatch(&mut store, &mut log, Action::Deal { seed: random_seed() });
+                dispatch(
+                    &mut store,
+                    &mut log,
+                    Action::Deal {
+                        seed: random_seed(),
+                    },
+                );
                 continue;
             }
             Ok(Command::Action(Action::AutoPlay)) => {
@@ -141,7 +149,9 @@ fn main() {
                 continue;
             }
             Err(CommandError::BadDealNumber(raw)) => {
-                println!("Invalid deal number '{raw}' — not dealing a random game. Type ? for help.");
+                println!(
+                    "Invalid deal number '{raw}' — not dealing a random game. Type ? for help."
+                );
             }
             Err(e) => {
                 println!("{e} — type ? for help.");
