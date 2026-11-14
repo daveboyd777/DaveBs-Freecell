@@ -28,7 +28,7 @@ use crossterm::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use freecell::stats::{Stats, StatsRecorder};
-use freecell::{Action, ActionError, Loc, Store, parse_move, replay};
+use freecell::{Action, ActionError, Command, CommandError, Loc, Store, parse_command, replay};
 use ratatui::{
     Terminal,
     backend::CrosstermBackend,
@@ -181,12 +181,11 @@ impl App {
     /// grammar exactly (`src/main.rs`): single-letter shortcuts, `n
     /// [seed]`, then the shared two-character move parser as a fallback.
     fn run_command(&mut self, line: &str) {
-        let line = line.trim().to_lowercase();
-        match line.as_str() {
-            "" => return,
-            "u" | "undo" => return self.dispatch(Action::Undo),
-            "y" | "redo" => return self.dispatch(Action::Redo),
-            "a" | "auto" => {
+        match parse_command(line) {
+            Ok(Command::Empty) => {}
+            Ok(Command::Action(Action::Undo)) => self.dispatch(Action::Undo),
+            Ok(Command::Action(Action::Redo)) => self.dispatch(Action::Redo),
+            Ok(Command::Action(Action::AutoPlay)) => {
                 let before = self.store.game().moves_played();
                 self.dispatch(Action::AutoPlay);
                 // `dispatch` already set `self.status` to an error message
@@ -197,32 +196,36 @@ impl App {
                     let sent = self.store.game().moves_played() - before;
                     self.status = Some(format!("Sent {sent} card(s) home."));
                 }
-                return;
             }
-            "r" | "restart" => return self.dispatch(Action::Restart),
-            "h" | "hint" => {
+            Ok(Command::Action(Action::Restart)) => self.dispatch(Action::Restart),
+            Ok(Command::NewGame) => self.dispatch(Action::Deal {
+                seed: random_seed(),
+            }),
+            Ok(Command::Hint) => {
                 self.status = Some(match freecell::analysis::hint(self.store.state()) {
                     Some((from, to)) => format!("Hint: try {}{}", loc_char(from), loc_char(to)),
                     None => "No hint available right now.".to_string(),
                 });
-                return;
             }
-            "g" | "report" => {
+            Ok(Command::Report) => {
                 let report = freecell::analysis::grade(self.store.game());
                 self.status = Some(describe_report(&report));
-                return;
             }
-            _ => {}
-        }
-
-        if let Some(rest) = line.strip_prefix('n') {
-            let seed = rest.trim().parse::<u32>().unwrap_or_else(|_| random_seed());
-            return self.dispatch(Action::Deal { seed });
-        }
-
-        match parse_move(&line) {
-            Some((from, to)) => self.dispatch(Action::Move { from, to }),
-            None => self.status = Some(format!("Unrecognized command '{line}'.")),
+            Ok(Command::Action(Action::Move { from, to })) => {
+                self.dispatch(Action::Move { from, to })
+            }
+            Ok(Command::Quit) | Ok(Command::Help) => {
+                // The TUI has no quit command or help screen; the grammar
+                // accepts them, the front end treats them as unrecognized.
+                self.status = Some(format!("Unrecognized command '{}'.", line.trim()));
+            }
+            Ok(Command::Action(_)) => {}
+            Err(CommandError::BadDealNumber(raw)) => {
+                self.status = Some(format!(
+                    "Invalid deal number '{raw}' — not dealing a random game."
+                ));
+            }
+            Err(e) => self.status = Some(format!("{e}.")),
         }
     }
 

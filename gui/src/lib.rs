@@ -375,12 +375,15 @@ impl FreecellApp {
             ui.label("Seed:");
             ui.add(egui::TextEdit::singleline(&mut self.seed_input).desired_width(60.0));
             if ui.button("New Game").clicked() {
-                let seed = self
-                    .seed_input
-                    .trim()
-                    .parse::<u32>()
-                    .unwrap_or_else(|_| random_seed());
-                self.dispatch(Action::Deal { seed });
+                match freecell::parse_optional_seed(&self.seed_input) {
+                    Ok(Some(seed)) => self.dispatch(Action::Deal { seed }),
+                    Ok(None) => self.dispatch(Action::Deal {
+                        seed: random_seed(),
+                    }),
+                    // A typed value that is not a deal number must not be
+                    // replaced with a random game.
+                    Err(e) => self.status = Some(format!("{e}.")),
+                }
             }
         });
     }

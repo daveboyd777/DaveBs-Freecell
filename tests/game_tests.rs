@@ -8,7 +8,10 @@
 //! - `Game::do_move(from, to)` — validated moves incl. multi-card supermoves
 //! - `Game::undo()`, `Game::is_won()`
 
-use freecell::{parse_move, replay, Action, Card, Game, Loc, Suit};
+use freecell::{
+    parse_command, parse_move, parse_optional_seed, replay, Action, Card, Command, CommandError,
+    Game, Loc, Suit,
+};
 
 /// Parse "JD" / "TC" / "AS" style shorthand into a Card.
 fn c(s: &str) -> Card {
@@ -754,4 +757,94 @@ fn parse_move_rejects_missing_or_extra_characters() {
     assert_eq!(parse_move("1"), None);
     assert_eq!(parse_move(""), None);
     assert_eq!(parse_move("1a5"), None);
+}
+
+// ------------------------------------------------------------- parse_command
+
+#[test]
+fn parse_command_reads_shortcuts_case_insensitively() {
+    assert_eq!(parse_command("  "), Ok(Command::Empty));
+    assert_eq!(parse_command("q"), Ok(Command::Quit));
+    assert_eq!(parse_command("EXIT"), Ok(Command::Quit));
+    assert_eq!(parse_command("?"), Ok(Command::Help));
+    assert_eq!(parse_command("Help"), Ok(Command::Help));
+    assert_eq!(parse_command("u"), Ok(Command::Action(Action::Undo)));
+    assert_eq!(parse_command("Y"), Ok(Command::Action(Action::Redo)));
+    assert_eq!(parse_command("auto"), Ok(Command::Action(Action::AutoPlay)));
+    assert_eq!(
+        parse_command("restart"),
+        Ok(Command::Action(Action::Restart))
+    );
+}
+
+#[test]
+fn parse_command_reads_moves() {
+    assert_eq!(
+        parse_command(" 1a "),
+        Ok(Command::Action(Action::Move {
+            from: Loc::Cascade(0),
+            to: Loc::Free(0),
+        }))
+    );
+}
+
+#[test]
+fn parse_command_reads_new_game_with_or_without_a_seed() {
+    assert_eq!(parse_command("n"), Ok(Command::NewGame));
+    assert_eq!(parse_command("new"), Ok(Command::NewGame));
+    assert_eq!(parse_command("n   "), Ok(Command::NewGame));
+    assert_eq!(
+        parse_command("N 617"),
+        Ok(Command::Action(Action::Deal { seed: 617 }))
+    );
+    assert_eq!(
+        parse_command("new 617"),
+        Ok(Command::Action(Action::Deal { seed: 617 }))
+    );
+    assert_eq!(
+        parse_command("n617"),
+        Ok(Command::Action(Action::Deal { seed: 617 }))
+    );
+}
+
+#[test]
+fn parse_command_does_not_treat_an_n_prefix_as_a_new_deal() {
+    assert!(matches!(
+        parse_command("nothing"),
+        Err(CommandError::Unrecognized(_))
+    ));
+    assert!(matches!(
+        parse_command("no"),
+        Err(CommandError::Unrecognized(_))
+    ));
+    assert!(matches!(
+        parse_command("new617"),
+        Err(CommandError::Unrecognized(_))
+    ));
+    assert_eq!(
+        parse_command("n 617 extra"),
+        Err(CommandError::BadDealNumber("617 extra".to_string()))
+    );
+    assert_eq!(
+        parse_command("new abc"),
+        Err(CommandError::BadDealNumber("abc".to_string()))
+    );
+    assert_eq!(
+        parse_command("n 99999999999"),
+        Err(CommandError::BadDealNumber("99999999999".to_string()))
+    );
+}
+
+#[test]
+fn parse_optional_seed_rejects_an_invalid_number() {
+    assert_eq!(parse_optional_seed("  "), Ok(None));
+    assert_eq!(parse_optional_seed("617"), Ok(Some(617)));
+    assert_eq!(
+        parse_optional_seed("abc"),
+        Err(CommandError::BadDealNumber("abc".to_string()))
+    );
+    assert_eq!(
+        parse_optional_seed("99999999999"),
+        Err(CommandError::BadDealNumber("99999999999".to_string()))
+    );
 }
