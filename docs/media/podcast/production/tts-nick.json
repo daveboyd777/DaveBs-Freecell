@@ -2,7 +2,8 @@
  {
   "id": 2,
   "type": "nick",
-  "text": "Because, angel, this isn't just solitaire. It's a FreeCell game built in Rust, test first, that grew into three different user interfaces, a full statistics and self-analysis system, a solver built from scratch, and a web dashboard written in JavaScript. Every last piece of it shares one game engine. No duplicated rules anywhere. I checked."
+  "text": "Because, angel, this isn't just solitaire. It's a FreeCell game built in Rust, test first, that grew into three different user interfaces, a full statistics and self-analysis system, a solver built from scratch, and a web dashboard written in JavaScript. Every last piece of it shares one game engine. No duplicated rules anywhere. I checked.",
+  "tone": "mock-serious"
  },
  {
   "id": 4,
@@ -47,7 +48,8 @@
  {
   "id": 23,
   "type": "nick",
-  "text": "Wound me. But it matters. The solver gives three honest answers, not two. Solvable, unsolvable, or unknown, meaning it simply didn't search deep enough to be certain. Every piece of code touching it has to handle unknown as its own real case. Get that wrong, and you'd tell a player their hand is dead when it might still be very much alive."
+  "text": "Wound me. But it matters. The solver gives three honest answers, not two. Solvable, unsolvable, or unknown, meaning it simply didn't search deep enough to be certain. Every piece of code touching it has to handle unknown as its own real case. Get that wrong, and you'd tell a player their hand is dead when it might still be very much alive.",
+  "tone": "mock-wounded"
  },
  {
   "id": 25,
@@ -97,7 +99,8 @@
  {
   "id": 45,
   "type": "nick",
-  "text": "That's rather the point, my dear. FreeCell is simple enough to hold entirely in one's head, which makes it an ideal place to practice good architecture without the subject matter getting in the way. The solver, the statistics, the two picture drawing tracks, each one small enough to reason about on its own. Which is exactly why it was possible to keep building on top of it without anything coming apart at the seams."
+  "text": "That's rather the point, my dear. FreeCell is simple enough to hold entirely in one's head, which makes it an ideal place to practice good architecture without the subject matter getting in the way. The solver, the statistics, the two picture drawing tracks, each one small enough to reason about on its own. Which is exactly why it was possible to keep building on top of it without anything coming apart at the seams.",
+  "tone": "mock-serious"
  },
  {
   "id": 47,
@@ -107,6 +110,7 @@
  {
   "id": 49,
   "type": "nick",
-  "text": "With rather more going on underneath than you'd expect."
+  "text": "With rather more going on underneath than you'd expect.",
+  "tone": "warm"
  }
 ]
