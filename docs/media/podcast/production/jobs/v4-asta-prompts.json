@@ -1,0 +1,26 @@
+[
+  {
+    "name": "establish",
+    "replaces": "clips/establish.mp4",
+    "openingShotOnly": true,
+    "prompt": "Black-and-white 1930s film, gentle push in on a wire fox terrier at a card table. This is the opening shot only: chin resting on the tabletop the whole shot. Eyes open, wet, with a live glimmer and a slow blink. He does not sit up, stand, or leave the table in this shot. White coat with brown and black markings. Film grain."
+  },
+  {
+    "name": "asta1",
+    "replaces": "clips/asta1.mp4",
+    "openingShotOnly": false,
+    "cue": "unimpressed glance, back to sleep"
+  },
+  {
+    "name": "asta2",
+    "replaces": "clips/asta2.mp4",
+    "openingShotOnly": false,
+    "cue": "ears perk up, settle back down"
+  },
+  {
+    "name": "asta3",
+    "replaces": "clips/asta3.mp4",
+    "openingShotOnly": false,
+    "cue": "sits up, tail wagging"
+  }
+]

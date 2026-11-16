@@ -2,12 +2,14 @@
  {
   "id": 1,
   "type": "nora",
-  "text": "Darling, everyone's asking. Why on earth does a game of solitaire need its own documentary?"
+  "text": "Darling, everyone's asking. Why on earth does a game of solitaire need its own documentary?",
+  "tone": "tease"
  },
  {
   "id": 2,
   "type": "nick",
-  "text": "Because, angel, this isn't just solitaire. It's a FreeCell game built in Rust, test first, that grew into three different user interfaces, a full statistics and self-analysis system, a solver built from scratch, and a web dashboard written in JavaScript. Every last piece of it shares one game engine. No duplicated rules anywhere. I checked."
+  "text": "Because, angel, this isn't just solitaire. It's a FreeCell game built in Rust, test first, that grew into three different user interfaces, a full statistics and self-analysis system, a solver built from scratch, and a web dashboard written in JavaScript. Every last piece of it shares one game engine. No duplicated rules anywhere. I checked.",
+  "tone": "mock-serious"
  },
  {
   "id": 3,
@@ -22,7 +24,8 @@
  {
   "id": 6,
   "type": "nora",
-  "text": "Redux. In a card game. You do know how to charm a girl."
+  "text": "Redux. In a card game. You do know how to charm a girl.",
+  "tone": "tease"
  },
  {
   "id": 7,
@@ -62,7 +65,8 @@
  {
   "id": 15,
   "type": "nora",
-  "text": "Now, the part I actually want to hear about. You mentioned a solver. Are you telling me the machine plays the hand for you?"
+  "text": "Now, the part I actually want to hear about. You mentioned a solver. Are you telling me the machine plays the hand for you?",
+  "tone": "tease"
  },
  {
   "id": 16,
@@ -92,12 +96,14 @@
  {
   "id": 22,
   "type": "nora",
-  "text": "That honesty seems almost out of character for you."
+  "text": "That honesty seems almost out of character for you.",
+  "tone": "tease"
  },
  {
   "id": 23,
   "type": "nick",
-  "text": "Wound me. But it matters. The solver gives three honest answers, not two. Solvable, unsolvable, or unknown, meaning it simply didn't search deep enough to be certain. Every piece of code touching it has to handle unknown as its own real case. Get that wrong, and you'd tell a player their hand is dead when it might still be very much alive."
+  "text": "Wound me. But it matters. The solver gives three honest answers, not two. Solvable, unsolvable, or unknown, meaning it simply didn't search deep enough to be certain. Every piece of code touching it has to handle unknown as its own real case. Get that wrong, and you'd tell a player their hand is dead when it might still be very much alive.",
+  "tone": "mock-wounded"
  },
  {
   "id": 24,
@@ -122,7 +128,8 @@
  {
   "id": 28,
   "type": "nora",
-  "text": "That's rather elegant, for a card game."
+  "text": "That's rather elegant, for a card game.",
+  "tone": "pleased"
  },
  {
   "id": 29,
@@ -152,7 +159,8 @@
  {
   "id": 35,
   "type": "nora",
-  "text": "Why bother building the same chart twice, in two different languages, darling?"
+  "text": "Why bother building the same chart twice, in two different languages, darling?",
+  "tone": "tease"
  },
  {
   "id": 36,
@@ -192,12 +200,14 @@
  {
   "id": 44,
   "type": "nora",
-  "text": "That's rather a lot of engineering for a game of solitaire, Nicky."
+  "text": "That's rather a lot of engineering for a game of solitaire, Nicky.",
+  "tone": "tease"
  },
  {
   "id": 45,
   "type": "nick",
-  "text": "That's rather the point, my dear. FreeCell is simple enough to hold entirely in one's head, which makes it an ideal place to practice good architecture without the subject matter getting in the way. The solver, the statistics, the two picture drawing tracks, each one small enough to reason about on its own. Which is exactly why it was possible to keep building on top of it without anything coming apart at the seams."
+  "text": "That's rather the point, my dear. FreeCell is simple enough to hold entirely in one's head, which makes it an ideal place to practice good architecture without the subject matter getting in the way. The solver, the statistics, the two picture drawing tracks, each one small enough to reason about on its own. Which is exactly why it was possible to keep building on top of it without anything coming apart at the seams.",
+  "tone": "mock-serious"
  },
  {
   "id": 46,
@@ -212,12 +222,14 @@
  {
   "id": 48,
   "type": "nora",
-  "text": "Well. That's DaveB's Freecell, everyone. The same fifty two cards you've always known."
+  "text": "Well. That's DaveB's Freecell, everyone. The same fifty two cards you've always known.",
+  "tone": "warm"
  },
  {
   "id": 49,
   "type": "nick",
-  "text": "With rather more going on underneath than you'd expect."
+  "text": "With rather more going on underneath than you'd expect.",
+  "tone": "warm"
  },
  {
   "id": 51,
