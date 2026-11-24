@@ -67,7 +67,7 @@ web-sys = { version = "0.3", features = ["Location", "Window"] }
 # Unchanged from before this crate had an Android target: full default
 # features (accesskit, wgpu, x11, wayland, links, web_screen_reader,
 # winit/default, default_fonts).
-eframe = "0.36.1"
+eframe = "0.37.0"
 # Renders the statistics charts (issue #14): win-rate trend and
 # move-count distribution. Draws into an in-memory RGB buffer (no file
 # I/O) for on-screen display via an egui texture; native-desktop-only
